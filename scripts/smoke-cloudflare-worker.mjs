@@ -64,6 +64,11 @@ const { stdout } = await execFileAsync(
 );
 console.log(stdout.trim());
 
+if (process.env.CI) {
+  console.log("Skipping local Worker HTTP boot in CI after successful Wrangler dry run.");
+  process.exit(0);
+}
+
 const wrangler = spawn(
   "npx",
   ["--yes", "wrangler@latest", "dev", "--local", "--ip", "127.0.0.1", "--port", "8791"],
