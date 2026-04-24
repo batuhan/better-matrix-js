@@ -1,8 +1,8 @@
 node_modules
 dist
 coverage
+.packs
 *.tsbuildinfo
 packages/core/dist
 packages/chat-adapter/dist
 packages/core/native/dist
-

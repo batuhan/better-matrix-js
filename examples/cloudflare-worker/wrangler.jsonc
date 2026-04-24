@@ -1,0 +1,11 @@
+{
+  "name": "better-matrix-js-example",
+  "main": "src/index.js",
+  "compatibility_date": "2026-04-24",
+  "kv_namespaces": [
+    {
+      "binding": "MATRIX_STORE",
+      "id": "replace-with-your-kv-namespace-id"
+    }
+  ]
+}

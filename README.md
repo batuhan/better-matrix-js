@@ -22,11 +22,19 @@ Durable state is provided by a small host key/value interface. The repo includes
 ## Install
 
 ```sh
+npm install better-matrix-js
+npm install chat @better-matrix-js/chat-adapter
+```
+
+For local development:
+
+```sh
 pnpm install
 pnpm build
 ```
 
-The build emits `matrix-core.wasm` and Go's `wasm_exec.js` in the core package dist.
+The build emits `matrix-core.wasm` and Go's `wasm_exec.js` in the core package
+dist.
 
 ## Node Usage
 
@@ -54,6 +62,21 @@ const adapter = createMatrixAdapter({
 ## Worker Usage
 
 Pass a Go runtime plus `wasmModule`, `wasmBytes`, or `wasmUrl` to `createMatrixAdapter()` or `loadMatrixCore()`. On Cloudflare Workers, use `createCloudflareKVMatrixStore()` or `createDurableObjectMatrixStore()` as the host store.
+
+Cloudflare Worker bundles that inline the Go WASM module are currently about
+4 MB compressed, so they require a Worker plan whose script-size limit allows
+that payload. See `examples/cloudflare-worker` for a minimal smoke-tested Worker.
+
+## Release
+
+Use pnpm for publishing so workspace ranges are rewritten into npm versions:
+
+```sh
+pnpm check
+pnpm publish:packages
+```
+
+Do not publish the adapter with direct `npm publish` from its package directory.
 
 ## Implemented
 
@@ -98,3 +121,8 @@ Unit tests do not require live credentials:
 ```sh
 pnpm test
 ```
+
+## Public Safety
+
+The live E2E harness is environment driven and intentionally does not contain
+account-creation logic or hardcoded homeserver credentials.

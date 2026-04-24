@@ -43,8 +43,8 @@ importers:
         specifier: ^25.3.2
         version: 25.6.0
       chat:
-        specifier: file:/Users/batuhan/Projects/labs/upstream/chat-sdk/packages/chat
-        version: file:../../../labs/upstream/chat-sdk/packages/chat
+        specifier: ^4.26.0
+        version: 4.26.0
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(postcss@8.5.10)(typescript@5.9.3)
@@ -609,8 +609,8 @@ packages:
   character-entities@2.0.2:
     resolution: {integrity: sha512-shx7oQ0Awen/BRIdkjkvz54PnEEI/EjwXDSIZp86/KKdbafHh1Df/RYGBhn4hbe2+uKC9FnT5UCEdyPz3ai9hQ==}
 
-  chat@file:../../../labs/upstream/chat-sdk/packages/chat:
-    resolution: {directory: ../../../labs/upstream/chat-sdk/packages/chat, type: directory}
+  chat@4.26.0:
+    resolution: {integrity: sha512-QToDnIEGpyb8yQA6YLMHOSRK30YVk4RtsyFyuWFYyB2c4jQlyIrSWtwVK7qyvmvqzQp9uDwCdJRAhS8GtCHAGQ==}
 
   chokidar@4.0.3:
     resolution: {integrity: sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA==}
@@ -1655,7 +1655,7 @@ snapshots:
 
   character-entities@2.0.2: {}
 
-  chat@file:../../../labs/upstream/chat-sdk/packages/chat:
+  chat@4.26.0:
     dependencies:
       '@workflow/serde': 4.1.0-beta.2
       mdast-util-to-string: 4.0.0
