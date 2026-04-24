@@ -1,0 +1,22 @@
+{
+  "name": "better-matrix-js-monorepo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.25.0",
+  "scripts": {
+    "build": "pnpm -r build",
+    "build:wasm": "pnpm --filter better-matrix-js build:wasm",
+    "clean": "pnpm -r clean",
+    "test:live": "node scripts/live-e2e.mjs",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "@types/mdast": "^4.0.4",
+    "@types/node": "^25.3.2",
+    "@vitest/coverage-v8": "^4.0.18",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^4.0.18"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "name": "@better-matrix-js/chat-adapter",
+  "version": "0.1.0",
+  "description": "Matrix adapter for Chat SDK",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "clean": "rm -rf dist",
+    "test": "vitest run --coverage",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "better-matrix-js": "workspace:*",
+    "marked": "^18.0.2",
+    "node-html-parser": "^7.1.0"
+  },
+  "peerDependencies": {
+    "chat": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "chat": "file:/Users/batuhan/Projects/labs/upstream/chat-sdk/packages/chat",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^4.0.18"
+  },
+  "keywords": [
+    "matrix",
+    "mautrix",
+    "chat-sdk",
+    "chat-adapter"
+  ],
+  "license": "MIT"
+}

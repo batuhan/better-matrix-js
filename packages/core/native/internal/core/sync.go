@@ -1,0 +1,196 @@
+package core
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+
+	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/event"
+)
+
+type syncOnceReq struct {
+	TimeoutMS int `json:"timeoutMs,omitempty"`
+}
+
+func (c *Core) handleSyncOnce(ctx context.Context, payload []byte) ([]byte, error) {
+	cli, err := c.requireClient()
+	if err != nil {
+		return nil, err
+	}
+	var req syncOnceReq
+	_ = json.Unmarshal(payload, &req)
+	if req.TimeoutMS <= 0 {
+		req.TimeoutMS = 30000
+	}
+	c.emit(OutboundEvent{"type": "sync_status", "status": "syncing"})
+	resp, err := cli.FullSyncRequest(ctx, mautrix.ReqSync{
+		Timeout:     req.TimeoutMS,
+		Since:       c.nextBatch,
+		FullState:   false,
+		SetPresence: event.PresenceOffline,
+	})
+	if err != nil {
+		return nil, err
+	}
+	since := c.nextBatch
+	c.nextBatch = resp.NextBatch
+	if c.stores != nil {
+		if err := c.stores.SaveNextBatch(ctx, c.nextBatch); err != nil {
+			return nil, err
+		}
+	}
+	if err := c.processSyncResponse(ctx, resp, since); err != nil {
+		return nil, err
+	}
+	return c.empty()
+}
+
+type applySyncReq struct {
+	Since    string          `json:"since,omitempty"`
+	Response json.RawMessage `json:"response"`
+}
+
+func (c *Core) handleApplySyncResponse(ctx context.Context, payload []byte) ([]byte, error) {
+	var req applySyncReq
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return nil, err
+	}
+	var resp mautrix.RespSync
+	if err := json.Unmarshal(req.Response, &resp); err != nil {
+		return nil, err
+	}
+	c.nextBatch = resp.NextBatch
+	if c.stores != nil {
+		if err := c.stores.SaveNextBatch(ctx, c.nextBatch); err != nil {
+			return nil, err
+		}
+	}
+	if err := c.processSyncResponse(ctx, &resp, req.Since); err != nil {
+		return nil, err
+	}
+	return c.empty()
+}
+
+func (c *Core) processSyncResponse(ctx context.Context, resp *mautrix.RespSync, since string) error {
+	cli, err := c.requireClient()
+	if err != nil {
+		return err
+	}
+	c.processInvites(resp)
+	if cli.Syncer != nil {
+		return cli.Syncer.ProcessResponse(ctx, resp, since)
+	}
+	for roomID, room := range resp.Rooms.Join {
+		for _, evt := range room.Timeline.Events {
+			if evt.RoomID == "" {
+				evt.RoomID = roomID
+			}
+			c.processEvent(ctx, evt)
+		}
+	}
+	return nil
+}
+
+func (c *Core) processInvites(resp *mautrix.RespSync) {
+	if resp == nil {
+		return
+	}
+	for roomID, room := range resp.Rooms.Invite {
+		inviter := ""
+		for _, evt := range room.State.Events {
+			if evt == nil {
+				continue
+			}
+			if evt.Type == event.StateMember && evt.GetStateKey() == c.userID.String() {
+				inviter = evt.Sender.String()
+				break
+			}
+		}
+		c.emit(OutboundEvent{
+			"type": "invite",
+			"event": OutboundEvent{
+				"inviter": inviter,
+				"raw":     room,
+				"roomId":  roomID.String(),
+			},
+		})
+	}
+}
+
+func (c *Core) processEvent(ctx context.Context, evt *event.Event) {
+	if evt == nil {
+		return
+	}
+	switch evt.Type {
+	case event.EventMessage:
+		if converted := c.convertMessageEvent(evt); converted != nil {
+			c.emit(OutboundEvent{"type": "message", "event": converted})
+		}
+	case event.EventReaction:
+		_ = evt.Content.ParseRaw(evt.Type)
+		content := evt.Content.AsReaction()
+		if content.RelatesTo.EventID == "" {
+			return
+		}
+		snapshot := reactionSnapshot{
+			EventID:          evt.ID,
+			Key:              content.RelatesTo.Key,
+			Raw:              evt,
+			RelatesToEventID: content.RelatesTo.EventID,
+			RoomID:           evt.RoomID,
+			Sender:           evt.Sender,
+		}
+		if snapshot.EventID != "" {
+			c.reactions[snapshot.EventID] = snapshot
+		}
+		c.emitReaction(snapshot, true)
+	case event.EventRedaction:
+		c.processRedaction(evt)
+	case event.EventEncrypted:
+		return
+	default:
+		_ = ctx
+	}
+}
+
+func (c *Core) convertMaybeEncryptedMessageEvent(ctx context.Context, evt *event.Event) OutboundEvent {
+	decrypted, err := c.decryptIfNeeded(ctx, evt)
+	if err != nil {
+		eventData := OutboundEvent{}
+		if evt != nil {
+			eventData["eventId"] = evt.ID.String()
+			eventData["roomId"] = evt.RoomID.String()
+			eventData["sender"] = evt.Sender.String()
+		}
+		c.emit(OutboundEvent{
+			"type":  "decryption_error",
+			"error": err.Error(),
+			"event": eventData,
+		})
+		return nil
+	}
+	if decrypted.Type != event.EventMessage {
+		return nil
+	}
+	return c.convertMessageEvent(decrypted)
+}
+
+func (c *Core) decryptIfNeeded(ctx context.Context, evt *event.Event) (*event.Event, error) {
+	if evt == nil {
+		return nil, errors.New("matrix event is nil")
+	}
+	if evt.Type != event.EventEncrypted {
+		return evt, nil
+	}
+	if c.crypto == nil {
+		return nil, errors.New("matrix E2EE is not initialized")
+	}
+	_ = evt.Content.ParseRaw(evt.Type)
+	decrypted, err := c.crypto.Decrypt(ctx, evt)
+	if err != nil {
+		return nil, err
+	}
+	decrypted.Mautrix.EventSource |= event.SourceDecrypted
+	return decrypted, nil
+}
