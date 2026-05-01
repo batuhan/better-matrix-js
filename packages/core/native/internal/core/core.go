@@ -8,6 +8,7 @@ import (
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/crypto"
+	"maunium.net/go/mautrix/crypto/backup"
 	"maunium.net/go/mautrix/crypto/cryptohelper"
 	"maunium.net/go/mautrix/id"
 )
@@ -16,6 +17,8 @@ type Core struct {
 	client             *mautrix.Client
 	crypto             *cryptohelper.CryptoHelper
 	cryptoStore        crypto.Store
+	backupKey          *backup.MegolmBackupKey
+	backupVersion      id.KeyBackupVersion
 	emit               func(OutboundEvent)
 	host               RuntimeHost
 	nextBatch          string
@@ -124,6 +127,8 @@ func (c *Core) handleClose() ([]byte, error) {
 	c.client = nil
 	c.crypto = nil
 	c.cryptoStore = nil
+	c.backupKey = nil
+	c.backupVersion = ""
 	c.nextBatch = ""
 	c.pendingDecryptions = nil
 	c.messageEdits = make(map[id.EventID]OutboundEvent)

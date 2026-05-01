@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"maunium.net/go/mautrix/crypto"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -13,16 +14,22 @@ import (
 const (
 	maxPendingDecryptions = 200
 	maxPendingAge         = 24 * time.Hour
+	sessionRequestBackoff = 5 * time.Minute
 )
 
 type pendingDecryption struct {
-	AddedAt   int64           `json:"addedAt"`
-	Attempts  int             `json:"attempts"`
-	Event     json.RawMessage `json:"event"`
-	EventID   string          `json:"eventId"`
-	RoomID    string          `json:"roomId"`
-	SenderKey string          `json:"senderKey,omitempty"`
-	SessionID string          `json:"sessionId,omitempty"`
+	AddedAt            int64           `json:"addedAt"`
+	Attempts           int             `json:"attempts"`
+	Event              json.RawMessage `json:"event"`
+	EventID            string          `json:"eventId"`
+	RoomID             string          `json:"roomId"`
+	MinIndex           uint            `json:"minIndex,omitempty"`
+	Sender             string          `json:"sender,omitempty"`
+	DeviceID           string          `json:"deviceId,omitempty"`
+	SenderKey          string          `json:"senderKey,omitempty"`
+	SessionID          string          `json:"sessionId,omitempty"`
+	BackupChecked      bool            `json:"backupChecked,omitempty"`
+	SessionRequestedAt int64           `json:"sessionRequestedAt,omitempty"`
 }
 
 func (c *Core) loadPendingDecryptions(ctx context.Context) error {
@@ -44,12 +51,16 @@ func (c *Core) rememberPendingDecryption(ctx context.Context, evt *event.Event) 
 	}
 	_ = evt.Content.ParseRaw(evt.Type)
 	content := evt.Content.AsEncrypted()
+	minIndex, _ := crypto.ParseMegolmMessageIndex(content.MegolmCiphertext)
 	eventID := evt.ID.String()
 	next := pendingDecryption{
 		AddedAt:   time.Now().UnixMilli(),
 		Event:     raw,
 		EventID:   eventID,
+		MinIndex:  minIndex,
 		RoomID:    evt.RoomID.String(),
+		Sender:    evt.Sender.String(),
+		DeviceID:  content.DeviceID.String(),
 		SenderKey: content.SenderKey.String(),
 		SessionID: content.SessionID.String(),
 	}
@@ -57,16 +68,17 @@ func (c *Core) rememberPendingDecryption(ctx context.Context, evt *event.Event) 
 		if existing.EventID == eventID {
 			next.AddedAt = existing.AddedAt
 			next.Attempts = existing.Attempts
+			next.BackupChecked = existing.BackupChecked
+			next.SessionRequestedAt = existing.SessionRequestedAt
 			c.pendingDecryptions[index] = next
+			c.requestMissingSession(ctx, &c.pendingDecryptions[index], false)
 			_ = c.savePendingDecryptions(ctx)
 			return
 		}
 	}
 	c.pendingDecryptions = append(c.pendingDecryptions, next)
+	c.requestMissingSession(ctx, &c.pendingDecryptions[len(c.pendingDecryptions)-1], false)
 	_ = c.savePendingDecryptions(ctx)
-	if c.crypto != nil && content.SenderKey != "" && content.SessionID != "" {
-		go c.crypto.RequestSession(context.Background(), evt.RoomID, content.SenderKey, content.SessionID, evt.Sender, content.DeviceID)
-	}
 }
 
 func (c *Core) retryPendingDecryptions(ctx context.Context) {
@@ -84,6 +96,11 @@ func (c *Core) retryPendingDecryptions(ctx context.Context) {
 		decrypted, err := c.decryptIfNeeded(ctx, &evt)
 		if err != nil {
 			pending.Attempts++
+			if c.requestMissingSession(ctx, &pending, true) {
+				decrypted, err = c.decryptIfNeeded(ctx, &evt)
+			}
+		}
+		if err != nil {
 			remaining = append(remaining, pending)
 			changed = true
 			continue
@@ -118,6 +135,56 @@ func (c *Core) removePendingDecryption(ctx context.Context, eventID id.EventID) 
 	if changed {
 		_ = c.savePendingDecryptions(ctx)
 	}
+}
+
+func (c *Core) requestMissingSession(ctx context.Context, pending *pendingDecryption, forceBackup bool) bool {
+	if c.crypto == nil || pending == nil || pending.RoomID == "" || pending.SessionID == "" {
+		return false
+	}
+	if forceBackup && !pending.BackupChecked {
+		if restored, checked := c.restorePendingFromBackup(ctx, pending); restored {
+			pending.SessionRequestedAt = 0
+			return true
+		} else if checked {
+			pending.BackupChecked = true
+		}
+	}
+	now := time.Now()
+	if pending.SessionRequestedAt > 0 && now.Sub(time.UnixMilli(pending.SessionRequestedAt)) < sessionRequestBackoff {
+		return false
+	}
+	pending.SessionRequestedAt = now.UnixMilli()
+	if pending.SenderKey == "" || pending.Sender == "" {
+		return false
+	}
+	c.crypto.RequestSession(ctx, id.RoomID(pending.RoomID), id.SenderKey(pending.SenderKey), id.SessionID(pending.SessionID), id.UserID(pending.Sender), "")
+	return false
+}
+
+func (c *Core) restorePendingFromBackup(ctx context.Context, pending *pendingDecryption) (bool, bool) {
+	if c.crypto == nil || c.backupKey == nil {
+		return false, false
+	}
+	mach := c.crypto.Machine()
+	if c.backupVersion == "" {
+		versionInfo, err := mach.GetAndVerifyLatestKeyBackupVersion(ctx, c.backupKey)
+		if err != nil || versionInfo == nil {
+			return false, false
+		}
+		c.backupVersion = versionInfo.Version
+	}
+	roomID := id.RoomID(pending.RoomID)
+	sessionID := id.SessionID(pending.SessionID)
+	resp, err := mach.Client.GetKeyBackupForRoomAndSession(ctx, c.backupVersion, roomID, sessionID)
+	if err != nil || resp == nil {
+		return false, true
+	}
+	sessionData, err := resp.SessionData.Decrypt(c.backupKey)
+	if err != nil {
+		return false, true
+	}
+	imported, err := mach.ImportRoomKeyFromBackup(ctx, c.backupVersion, roomID, sessionID, sessionData)
+	return err == nil && imported != nil && imported.Internal.FirstKnownIndex() <= uint32(pending.MinIndex), true
 }
 
 func (c *Core) trimPendingDecryptions(pending []pendingDecryption) []pendingDecryption {

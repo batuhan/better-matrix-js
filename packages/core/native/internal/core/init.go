@@ -58,6 +58,8 @@ func (c *Core) handleInit(ctx context.Context, payload []byte) ([]byte, error) {
 	c.client = cli
 	c.crypto = nil
 	c.cryptoStore = stores.CryptoStore
+	c.backupKey = nil
+	c.backupVersion = ""
 	c.nextBatch = ""
 	c.pendingDecryptions = nil
 	c.reactions = make(map[id.EventID]reactionSnapshot)
@@ -136,10 +138,12 @@ func (c *Core) setupCrypto(ctx context.Context, req initReq) error {
 	c.emit(OutboundEvent{"type": "crypto_status", "status": "enabled"})
 
 	if req.RecoveryKey != "" {
-		backupVersion, err := c.verifyWithRecovery(ctx, helper.Machine(), req.RecoveryKey)
+		backupVersion, backupKey, err := c.verifyWithRecovery(ctx, helper.Machine(), req.RecoveryKey)
 		if err != nil {
 			return err
 		}
+		c.backupVersion = backupVersion
+		c.backupKey = backupKey
 		c.emit(OutboundEvent{
 			"type":             "crypto_status",
 			"status":           "recovery_restored",
@@ -153,10 +157,10 @@ func (c *Core) setupCrypto(ctx context.Context, req initReq) error {
 	return nil
 }
 
-func (c *Core) verifyWithRecovery(ctx context.Context, mach *crypto.OlmMachine, code string) (id.KeyBackupVersion, error) {
+func (c *Core) verifyWithRecovery(ctx context.Context, mach *crypto.OlmMachine, code string) (id.KeyBackupVersion, *backup.MegolmBackupKey, error) {
 	keyID, keyData, err := mach.SSSS.GetDefaultKeyData(ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to get default SSSS key data: %w", err)
+		return "", nil, fmt.Errorf("failed to get default SSSS key data: %w", err)
 	}
 	key, err := keyData.VerifyRecoveryKey(keyID, code)
 	if errors.Is(err, ssss.ErrInvalidRecoveryKey) && keyData.Passphrase != nil {
@@ -165,34 +169,34 @@ func (c *Core) verifyWithRecovery(ctx context.Context, mach *crypto.OlmMachine, 
 	if errors.Is(err, ssss.ErrUnverifiableKey) {
 		c.emit(OutboundEvent{"type": "crypto_status", "status": "recovery_unverified", "keyId": keyID})
 	} else if err != nil {
-		return "", fmt.Errorf("failed to verify Matrix recovery code: %w", err)
+		return "", nil, fmt.Errorf("failed to verify Matrix recovery code: %w", err)
 	}
 	if err := mach.FetchCrossSigningKeysFromSSSS(ctx, key); err != nil {
-		return "", fmt.Errorf("failed to fetch cross-signing keys from SSSS: %w", err)
+		return "", nil, fmt.Errorf("failed to fetch cross-signing keys from SSSS: %w", err)
 	}
 	if err := mach.SignOwnDevice(ctx, mach.OwnIdentity()); err != nil {
-		return "", fmt.Errorf("failed to sign own device: %w", err)
+		return "", nil, fmt.Errorf("failed to sign own device: %w", err)
 	}
 	if err := mach.SignOwnMasterKey(ctx); err != nil {
-		return "", fmt.Errorf("failed to sign own master key: %w", err)
+		return "", nil, fmt.Errorf("failed to sign own master key: %w", err)
 	}
 
 	data, err := mach.SSSS.GetDecryptedAccountData(ctx, event.AccountDataMegolmBackupKey, key)
 	if err != nil {
 		c.emit(OutboundEvent{"type": "crypto_status", "status": "key_backup_unavailable", "error": err.Error()})
-		return "", nil
+		return "", nil, nil
 	}
 	backupKey, err := backup.MegolmBackupKeyFromBytes(data)
 	if err != nil {
 		c.emit(OutboundEvent{"type": "crypto_status", "status": "key_backup_unavailable", "error": err.Error()})
-		return "", nil
+		return "", nil, nil
 	}
 	backupVersion, err := mach.DownloadAndStoreLatestKeyBackup(ctx, backupKey)
 	if err != nil {
 		c.emit(OutboundEvent{"type": "crypto_status", "status": "key_backup_unavailable", "error": err.Error()})
-		return "", nil
+		return "", backupKey, nil
 	}
-	return backupVersion, nil
+	return backupVersion, backupKey, nil
 }
 
 func (c *Core) resolvePickleKey(req initReq) []byte {
