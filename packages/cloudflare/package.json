@@ -1,13 +1,13 @@
 {
-  "name": "better-matrix-js",
+  "name": "@better-matrix-js/cloudflare",
   "version": "0.1.0",
-  "description": "WASM-backed TypeScript Matrix SDK built on mautrix-go",
+  "description": "Cloudflare Workers and Durable Objects helpers for better-matrix-js",
   "type": "module",
   "homepage": "https://github.com/batuhan/better-matrix-js#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/batuhan/better-matrix-js.git",
-    "directory": "packages/core"
+    "directory": "packages/cloudflare"
   },
   "bugs": {
     "url": "https://github.com/batuhan/better-matrix-js/issues"
@@ -19,17 +19,7 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./node": {
-      "types": "./dist/node.d.ts",
-      "import": "./dist/node.js"
-    },
-    "./cloudflare": {
-      "types": "./dist/cloudflare.d.ts",
-      "import": "./dist/cloudflare.js"
-    },
-    "./matrix-core.wasm": "./dist/matrix-core.wasm",
-    "./wasm_exec.js": "./dist/wasm_exec.js"
+    }
   },
   "files": [
     "dist",
@@ -40,14 +30,11 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup && npm run build:wasm",
-    "build:wasm": "mkdir -p dist && cd native && GOOS=js GOARCH=wasm CGO_ENABLED=0 go build -tags goolm -ldflags='-s -w' -o ../dist/matrix-core.wasm ./cmd/matrix-wasm && cp \"$(go env GOROOT)/lib/wasm/wasm_exec.js\" ../dist/wasm_exec.js",
+    "build": "tsup",
     "clean": "rm -rf dist",
+    "prepublishOnly": "node ../../scripts/guard-pnpm-publish.mjs",
     "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@better-matrix-js/cloudflare": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",
@@ -57,11 +44,9 @@
   },
   "keywords": [
     "matrix",
-    "mautrix",
-    "wasm",
-    "e2ee",
-    "olm",
-    "chat-sdk"
+    "cloudflare",
+    "workers",
+    "durable-objects"
   ],
   "engines": {
     "node": ">=20"

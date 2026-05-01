@@ -13,20 +13,21 @@ import (
 )
 
 type Core struct {
-	client       *mautrix.Client
-	crypto       *cryptohelper.CryptoHelper
-	cryptoStore  crypto.Store
-	emit         func(OutboundEvent)
-	host         RuntimeHost
-	nextBatch    string
-	pickleKey    []byte
-	messageEdits map[id.EventID]OutboundEvent
-	reactions    map[id.EventID]reactionSnapshot
-	stores       *storeBundle
-	userID       id.UserID
-	deviceID     id.DeviceID
-	cryptoStatus string
-	mu           sync.Mutex
+	client             *mautrix.Client
+	crypto             *cryptohelper.CryptoHelper
+	cryptoStore        crypto.Store
+	emit               func(OutboundEvent)
+	host               RuntimeHost
+	nextBatch          string
+	pickleKey          []byte
+	pendingDecryptions []pendingDecryption
+	messageEdits       map[id.EventID]OutboundEvent
+	reactions          map[id.EventID]reactionSnapshot
+	stores             *storeBundle
+	userID             id.UserID
+	deviceID           id.DeviceID
+	cryptoStatus       string
+	mu                 sync.Mutex
 }
 
 type OutboundEvent map[string]any
@@ -124,6 +125,7 @@ func (c *Core) handleClose() ([]byte, error) {
 	c.crypto = nil
 	c.cryptoStore = nil
 	c.nextBatch = ""
+	c.pendingDecryptions = nil
 	c.messageEdits = make(map[id.EventID]OutboundEvent)
 	c.reactions = make(map[id.EventID]reactionSnapshot)
 	c.stores = nil

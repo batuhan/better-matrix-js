@@ -1,0 +1,412 @@
+export interface CloudflareKVNamespaceLike {
+  delete(key: string): Promise<void>;
+  get(key: string, type: "arrayBuffer"): Promise<ArrayBuffer | null>;
+  list(options?: {
+    cursor?: string;
+    prefix?: string;
+  }): Promise<{
+    cursor?: string;
+    keys: Array<{ name: string }>;
+    list_complete: boolean;
+  }>;
+  put(key: string, value: ArrayBuffer | Uint8Array): Promise<void>;
+}
+
+export interface DurableObjectStorageLike {
+  delete(key: string): Promise<boolean>;
+  get<T = unknown>(key: string): Promise<T | undefined>;
+  getAlarm?(): Promise<number | null>;
+  list<T = unknown>(options?: { prefix?: string }): Promise<Map<string, T>>;
+  put(key: string, value: unknown): Promise<void>;
+  setAlarm?(scheduledTime: number | Date): Promise<void>;
+  deleteAlarm?(): Promise<void>;
+}
+
+export interface DurableObjectStateLike {
+  blockConcurrencyWhile?(callback: () => Promise<void>): void;
+  storage: DurableObjectStorageLike;
+}
+
+export interface CloudflareStoreOptions {
+  prefix?: string;
+}
+
+export interface MatrixKeyValueStore {
+  delete(key: string): Promise<void>;
+  get(key: string): Promise<Uint8Array | null>;
+  list(prefix: string): Promise<string[]>;
+  set(key: string, value: Uint8Array): Promise<void>;
+}
+
+export interface MatrixSyncDurableObjectEnv {
+  MATRIX_ACCESS_TOKEN?: string;
+  MATRIX_HOMESERVER_URL?: string;
+  MATRIX_SYNC_ACCESS_TOKEN?: string;
+  MATRIX_SYNC_HOMESERVER_URL?: string;
+  MATRIX_SYNC_IDLE_REWAKE_MS?: string;
+  MATRIX_SYNC_MAX_RETRY_MS?: string;
+  MATRIX_SYNC_NEXT_ALARM_MS?: string;
+  MATRIX_SYNC_RETRY_MS?: string;
+  MATRIX_SYNC_TIMEOUT_MS?: string;
+  MATRIX_SYNC_WEBHOOK_AUTHORIZATION?: string;
+  MATRIX_SYNC_WEBHOOK_SECRET?: string;
+  MATRIX_SYNC_WEBHOOK_URL?: string;
+  [key: string]: unknown;
+}
+
+export interface MatrixSyncDurableObjectOptions {
+  accessToken?: string;
+  fetch?: typeof fetch;
+  homeserverUrl?: string;
+  idleRewakeMs?: number;
+  maxRetryMs?: number;
+  nextAlarmMs?: number;
+  retryMs?: number;
+  storagePrefix?: string;
+  syncTimeoutMs?: number;
+  webhookAuthorization?: string;
+  webhookSecret?: string;
+  webhookUrl?: string;
+}
+
+export interface MatrixSyncDurableObjectStatus {
+  enabled: boolean;
+  lastError?: string;
+  retryMs: number;
+  since?: string;
+}
+
+export function createCloudflareKVMatrixStore(
+  namespace: CloudflareKVNamespaceLike,
+  options: CloudflareStoreOptions = {}
+): MatrixKeyValueStore {
+  const prefix = options.prefix ?? "";
+  return {
+    async delete(key) {
+      await namespace.delete(prefix + key);
+    },
+    async get(key) {
+      const value = await namespace.get(prefix + key, "arrayBuffer");
+      return value ? new Uint8Array(value) : null;
+    },
+    async list(keyPrefix) {
+      const keys: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const options: { cursor?: string; prefix?: string } = { prefix: prefix + keyPrefix };
+        if (cursor !== undefined) {
+          options.cursor = cursor;
+        }
+        const result = await namespace.list(options);
+        for (const key of result.keys) {
+          keys.push(key.name.slice(prefix.length));
+        }
+        cursor = result.list_complete ? undefined : result.cursor;
+      } while (cursor);
+      return keys;
+    },
+    async set(key, value) {
+      await namespace.put(prefix + key, copyToArrayBuffer(value));
+    },
+  };
+}
+
+export function createDurableObjectMatrixStore(
+  storage: DurableObjectStorageLike,
+  options: CloudflareStoreOptions = {}
+): MatrixKeyValueStore {
+  const prefix = options.prefix ?? "";
+  return {
+    async delete(key) {
+      await storage.delete(prefix + key);
+    },
+    async get(key) {
+      const value = await storage.get<ArrayBuffer | Uint8Array | number[]>(prefix + key);
+      if (value instanceof Uint8Array) {
+        return new Uint8Array(value);
+      }
+      if (value instanceof ArrayBuffer) {
+        return new Uint8Array(value);
+      }
+      return Array.isArray(value) ? new Uint8Array(value) : null;
+    },
+    async list(keyPrefix) {
+      const values = await storage.list({ prefix: prefix + keyPrefix });
+      return [...values.keys()].map((key) => key.slice(prefix.length));
+    },
+    async set(key, value) {
+      await storage.put(prefix + key, copyToArrayBuffer(value));
+    },
+  };
+}
+
+export class MatrixSyncDurableObject {
+  readonly #env: MatrixSyncDurableObjectEnv;
+  readonly #options: MatrixSyncDurableObjectOptions;
+  readonly #state: DurableObjectStateLike;
+  #syncInFlight: Promise<MatrixSyncDurableObjectStatus> | null = null;
+
+  constructor(
+    state: DurableObjectStateLike,
+    env: MatrixSyncDurableObjectEnv,
+    options: MatrixSyncDurableObjectOptions = {}
+  ) {
+    this.#state = state;
+    this.#env = env;
+    this.#options = options;
+    this.#state.blockConcurrencyWhile?.(async () => {
+      if ((await this.#getEnabled()) && !(await this.#state.storage.getAlarm?.())) {
+        await this.#setAlarm(this.#optionNumber("nextAlarmMs", "MATRIX_SYNC_NEXT_ALARM_MS", 0));
+      }
+    });
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    if (request.method === "GET" && url.pathname.endsWith("/status")) {
+      return Response.json(await this.status());
+    }
+
+    if (request.method !== "POST") {
+      return Response.json({ error: "Method not allowed" }, { status: 405 });
+    }
+
+    if (url.pathname.endsWith("/start")) {
+      await this.#setEnabled(true);
+      const status = await this.#sync();
+      return Response.json({ ok: true, status });
+    }
+
+    if (url.pathname.endsWith("/stop")) {
+      await this.#setEnabled(false);
+      await this.#state.storage.deleteAlarm?.();
+      return Response.json({ ok: true, status: await this.status() });
+    }
+
+    if (url.pathname.endsWith("/sync") || url.pathname.endsWith("/wake")) {
+      await this.#setEnabled(true);
+      const status = await this.#sync();
+      return Response.json({ ok: true, status });
+    }
+
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+
+  async alarm(): Promise<void> {
+    await this.#sync();
+  }
+
+  async status(): Promise<MatrixSyncDurableObjectStatus> {
+    const since = await this.#getString("since");
+    const lastError = await this.#getString("last-error");
+    const status: MatrixSyncDurableObjectStatus = {
+      enabled: await this.#getEnabled(),
+      retryMs: (await this.#state.storage.get<number>(this.#key("retry-ms"))) ?? 0,
+    };
+    if (lastError) {
+      status.lastError = lastError;
+    }
+    if (since) {
+      status.since = since;
+    }
+    return status;
+  }
+
+  async #sync(): Promise<MatrixSyncDurableObjectStatus> {
+    this.#syncInFlight ??= this.#syncOnce().finally(() => {
+      this.#syncInFlight = null;
+    });
+    return this.#syncInFlight;
+  }
+
+  async #syncOnce(): Promise<MatrixSyncDurableObjectStatus> {
+    if (!(await this.#getEnabled())) {
+      return this.status();
+    }
+
+    try {
+      const previousSince = await this.#getString("since");
+      const response = await this.#fetchSync(previousSince);
+      await this.#postWebhook(response, previousSince);
+      const nextBatch = syncNextBatch(response);
+      if (nextBatch) {
+        await this.#state.storage.put(this.#key("since"), nextBatch);
+      }
+      await this.#state.storage.delete(this.#key("last-error"));
+      await this.#state.storage.put(this.#key("retry-ms"), 0);
+      await this.#scheduleNextSuccess();
+    } catch (error) {
+      await this.#state.storage.put(this.#key("last-error"), errorMessage(error));
+      await this.#scheduleRetry();
+    }
+
+    return this.status();
+  }
+
+  async #fetchSync(since: string | undefined): Promise<unknown> {
+    const homeserverUrl = this.#optionString("homeserverUrl", "MATRIX_SYNC_HOMESERVER_URL") ??
+      this.#env.MATRIX_HOMESERVER_URL;
+    const accessToken = this.#optionString("accessToken", "MATRIX_SYNC_ACCESS_TOKEN") ??
+      this.#env.MATRIX_ACCESS_TOKEN;
+    if (!homeserverUrl) {
+      throw new Error("Matrix sync Durable Object requires MATRIX_SYNC_HOMESERVER_URL");
+    }
+    if (!accessToken) {
+      throw new Error("Matrix sync Durable Object requires MATRIX_SYNC_ACCESS_TOKEN");
+    }
+
+    const url = new URL("/_matrix/client/v3/sync", homeserverUrl);
+    url.searchParams.set(
+      "timeout",
+      String(this.#optionNumber("syncTimeoutMs", "MATRIX_SYNC_TIMEOUT_MS", 30_000))
+    );
+    if (since) {
+      url.searchParams.set("since", since);
+    }
+
+    const response = await this.#fetch()(url, {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    const text = await response.text();
+    const body = text ? JSON.parse(text) : {};
+    if (!response.ok) {
+      throw new Error(`Matrix sync failed: HTTP ${response.status} ${text}`);
+    }
+    return body;
+  }
+
+  async #postWebhook(response: unknown, since: string | undefined): Promise<void> {
+    const webhookUrl = this.#optionString("webhookUrl", "MATRIX_SYNC_WEBHOOK_URL");
+    if (!webhookUrl) {
+      throw new Error("Matrix sync Durable Object requires MATRIX_SYNC_WEBHOOK_URL");
+    }
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    const authorization = this.#optionString(
+      "webhookAuthorization",
+      "MATRIX_SYNC_WEBHOOK_AUTHORIZATION"
+    );
+    const secret = this.#optionString("webhookSecret", "MATRIX_SYNC_WEBHOOK_SECRET");
+    if (authorization) {
+      headers.authorization = authorization;
+    } else if (secret) {
+      headers.authorization = `Bearer ${secret}`;
+    }
+
+    const webhookResponse = await this.#fetch()(webhookUrl, {
+      body: JSON.stringify(stripUndefined({ response, since })),
+      headers,
+      method: "POST",
+    });
+    if (!webhookResponse.ok) {
+      throw new Error(`Matrix sync webhook failed: HTTP ${webhookResponse.status}`);
+    }
+  }
+
+  async #scheduleNextSuccess(): Promise<void> {
+    if (!(await this.#getEnabled())) {
+      return;
+    }
+    const nextAlarmMs = this.#optionNumber("nextAlarmMs", "MATRIX_SYNC_NEXT_ALARM_MS", 0);
+    const idleRewakeMs = this.#optionNumber(
+      "idleRewakeMs",
+      "MATRIX_SYNC_IDLE_REWAKE_MS",
+      nextAlarmMs
+    );
+    await this.#setAlarm(idleRewakeMs);
+  }
+
+  async #scheduleRetry(): Promise<void> {
+    if (!(await this.#getEnabled())) {
+      return;
+    }
+    const retryMs = (await this.#state.storage.get<number>(this.#key("retry-ms"))) ??
+      this.#optionNumber("retryMs", "MATRIX_SYNC_RETRY_MS", 1_000);
+    const maxRetryMs = this.#optionNumber("maxRetryMs", "MATRIX_SYNC_MAX_RETRY_MS", 60_000);
+    const nextRetryMs = Math.min(Math.max(retryMs * 2, 1_000), maxRetryMs);
+    await this.#state.storage.put(this.#key("retry-ms"), nextRetryMs);
+    await this.#setAlarm(retryMs);
+  }
+
+  async #setAlarm(delayMs: number): Promise<void> {
+    if (!this.#state.storage.setAlarm) {
+      throw new Error("Durable Object storage alarms are required for Matrix sync");
+    }
+    await this.#state.storage.setAlarm(Date.now() + Math.max(0, delayMs));
+  }
+
+  #fetch(): typeof fetch {
+    return this.#options.fetch ?? fetch;
+  }
+
+  async #getEnabled(): Promise<boolean> {
+    return (await this.#state.storage.get<boolean>(this.#key("enabled"))) ?? false;
+  }
+
+  async #getString(key: string): Promise<string | undefined> {
+    const value = await this.#state.storage.get<unknown>(this.#key(key));
+    return typeof value === "string" ? value : undefined;
+  }
+
+  #key(key: string): string {
+    return `${this.#options.storagePrefix ?? "matrix-sync:"}${key}`;
+  }
+
+  async #setEnabled(enabled: boolean): Promise<void> {
+    await this.#state.storage.put(this.#key("enabled"), enabled);
+  }
+
+  #optionNumber(
+    optionKey: keyof MatrixSyncDurableObjectOptions,
+    envKey: keyof MatrixSyncDurableObjectEnv,
+    fallback: number
+  ): number {
+    const optionValue = this.#options[optionKey];
+    if (typeof optionValue === "number" && Number.isFinite(optionValue)) {
+      return optionValue;
+    }
+    const envValue = this.#env[envKey];
+    if (typeof envValue === "string" && envValue.length > 0) {
+      const number = Number(envValue);
+      if (Number.isFinite(number)) {
+        return number;
+      }
+    }
+    return fallback;
+  }
+
+  #optionString(
+    optionKey: keyof MatrixSyncDurableObjectOptions,
+    envKey: keyof MatrixSyncDurableObjectEnv
+  ): string | undefined {
+    const optionValue = this.#options[optionKey];
+    if (typeof optionValue === "string" && optionValue.length > 0) {
+      return optionValue;
+    }
+    const envValue = this.#env[envKey];
+    return typeof envValue === "string" && envValue.length > 0 ? envValue : undefined;
+  }
+}
+
+function copyToArrayBuffer(value: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(value.byteLength);
+  copy.set(value);
+  return copy.buffer;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function stripUndefined<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entryValue]) => entryValue !== undefined)
+  ) as T;
+}
+
+function syncNextBatch(response: unknown): string | undefined {
+  if (!response || typeof response !== "object") {
+    return undefined;
+  }
+  const nextBatch = (response as { next_batch?: unknown }).next_batch;
+  return typeof nextBatch === "string" && nextBatch.length > 0 ? nextBatch : undefined;
+}

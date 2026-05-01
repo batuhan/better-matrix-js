@@ -288,6 +288,40 @@ describe("MatrixAdapter", () => {
     expect(core.joinRoom).toHaveBeenCalledWith({ roomIdOrAlias: "!room:example.com" });
   });
 
+  it("retries transient auto-join failures", async () => {
+    vi.useFakeTimers();
+    try {
+      const { core, emit } = makeCore({
+        joinRoom: vi.fn()
+          .mockRejectedValueOnce(new Error("M_LIMIT_EXCEEDED (HTTP 429): Too Many Requests"))
+          .mockResolvedValueOnce({ raw: {}, roomId: "!room:example.com" }),
+      });
+      const adapter = new MatrixAdapter({
+        accessToken: "token",
+        core,
+        homeserverUrl: "https://matrix.example.com",
+        inviteAutoJoin: { inviterAllowlist: ["@alice:example.com"] },
+        polling: { enabled: false },
+      });
+      await adapter.initialize(makeChat());
+
+      emit({
+        event: {
+          inviter: "@alice:example.com",
+          raw: {},
+          roomId: "!room:example.com",
+        },
+        type: "invite",
+      });
+
+      await vi.waitFor(() => expect(core.joinRoom).toHaveBeenCalledTimes(1));
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.waitFor(() => expect(core.joinRoom).toHaveBeenCalledTimes(2));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("dispatches slash commands from Matrix messages", async () => {
     const { core, emit } = makeCore();
     const chat = makeChat();

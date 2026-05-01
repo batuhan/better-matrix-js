@@ -59,12 +59,16 @@ func (c *Core) handleInit(ctx context.Context, payload []byte) ([]byte, error) {
 	c.crypto = nil
 	c.cryptoStore = stores.CryptoStore
 	c.nextBatch = ""
+	c.pendingDecryptions = nil
 	c.reactions = make(map[id.EventID]reactionSnapshot)
 	c.stores = stores
 	c.userID = resp.UserID
 	c.deviceID = resp.DeviceID
 	c.cryptoStatus = "disabled"
 	if c.nextBatch, err = stores.LoadNextBatch(ctx); err != nil {
+		return nil, err
+	}
+	if err := c.loadPendingDecryptions(ctx); err != nil {
 		return nil, err
 	}
 
@@ -110,6 +114,7 @@ func (c *Core) setupCrypto(ctx context.Context, req initReq) error {
 		return err
 	}
 	helper.DecryptErrorCallback = func(evt *event.Event, err error) {
+		c.rememberPendingDecryption(ctx, evt)
 		eventData := OutboundEvent{}
 		if evt != nil {
 			eventData["eventId"] = evt.ID.String()

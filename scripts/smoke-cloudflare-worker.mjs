@@ -13,32 +13,59 @@ const workerDir = join(temp, "worker");
 const srcDir = join(workerDir, "src");
 
 await mkdir(packDir, { recursive: true });
-await execFileAsync("pnpm", ["-r", "--filter", "better-matrix-js", "pack", "--pack-destination", packDir], {
-  cwd: rootPath,
-});
+await execFileAsync(
+  "pnpm",
+  ["-r", "--filter", "better-matrix-js", "--filter", "@better-matrix-js/cloudflare", "pack", "--pack-destination", packDir],
+  { cwd: rootPath }
+);
 await mkdir(srcDir, { recursive: true });
 await execFileAsync("npm", ["init", "-y"], { cwd: workerDir });
-await execFileAsync("npm", ["install", join(packDir, "better-matrix-js-0.1.0.tgz")], {
-  cwd: workerDir,
-});
+await execFileAsync("npm", [
+  "install",
+  join(packDir, "better-matrix-js-0.1.0.tgz"),
+  join(packDir, "better-matrix-js-cloudflare-0.1.0.tgz"),
+], { cwd: workerDir });
 
 await writeFile(
   join(srcDir, "index.js"),
   `
 import "better-matrix-js/wasm_exec.js";
 import wasmModule from "better-matrix-js/matrix-core.wasm";
-import { MemoryMatrixStore, loadMatrixCore } from "better-matrix-js";
+import { loadMatrixCore } from "better-matrix-js";
+import {
+  createDurableObjectMatrixStore,
+  MatrixSyncDurableObject,
+} from "@better-matrix-js/cloudflare";
 
-let corePromise;
+export class MatrixCoreObject {
+  constructor(state) {
+    this.state = state;
+    this.corePromise = null;
+  }
+
+  async fetch() {
+    this.corePromise ??= loadMatrixCore({
+      wasmModule,
+      host: {
+        store: createDurableObjectMatrixStore(this.state.storage, {
+          prefix: "matrix/default/",
+        }),
+      },
+    });
+    const core = await this.corePromise;
+    return Response.json({ ok: Boolean(core) });
+  }
+}
+
+export class MatrixSyncObject extends MatrixSyncDurableObject {}
 
 export default {
-  async fetch() {
-    corePromise ??= loadMatrixCore({
-      wasmModule,
-      host: { store: new MemoryMatrixStore() },
-    });
-    const core = await corePromise;
-    return Response.json({ ok: Boolean(core) });
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    const binding = url.pathname.startsWith("/matrix/sync")
+      ? env.MATRIX_SYNC
+      : env.MATRIX_CORE;
+    return binding.get(binding.idFromName("default")).fetch(request);
   },
 };
 `.trimStart()
@@ -51,6 +78,18 @@ await writeFile(
       name: "better-matrix-js-smoke",
       main: "src/index.js",
       compatibility_date: "2026-04-24",
+      durable_objects: {
+        bindings: [
+          { class_name: "MatrixCoreObject", name: "MATRIX_CORE" },
+          { class_name: "MatrixSyncObject", name: "MATRIX_SYNC" },
+        ],
+      },
+      migrations: [
+        {
+          new_classes: ["MatrixCoreObject", "MatrixSyncObject"],
+          tag: "v1",
+        },
+      ],
     },
     null,
     2
@@ -85,14 +124,20 @@ wrangler.stderr.on("data", (chunk) => {
 
 const response = await waitForHttp("http://127.0.0.1:8791/", 30_000);
 const body = await response.text();
+const statusResponse = await fetch("http://127.0.0.1:8791/matrix/sync/status");
+const statusBody = await statusResponse.text();
 wrangler.kill("SIGTERM");
 await waitForExit(wrangler);
 
 if (!response.ok || body !== '{"ok":true}') {
   throw new Error(`Unexpected Worker response ${response.status}: ${body}`);
 }
+if (!statusResponse.ok || statusBody !== '{"enabled":false,"retryMs":0}') {
+  throw new Error(`Unexpected Worker sync status ${statusResponse.status}: ${statusBody}`);
+}
 
 console.log(body);
+console.log(statusBody);
 
 async function waitFor(predicate, timeoutMs) {
   const started = Date.now();

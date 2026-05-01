@@ -100,6 +100,9 @@ interface MatrixSyncWebhookPayload {
   sync?: unknown;
 }
 
+const INVITE_JOIN_MAX_ATTEMPTS = 5;
+const INVITE_JOIN_RETRY_BASE_MS = 1000;
+
 export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixRawMessage> {
   readonly name = "matrix";
   readonly userName: string;
@@ -111,6 +114,7 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixRawMess
   #core: MatrixCore | null = null;
   #formatConverter = new MatrixFormatConverter();
   #logger: Logger;
+  #inviteJoinTasks = new Map<string, Promise<void>>();
   #messageThreadIds = new Map<string, string>();
   #polling: MatrixPollingHandle | null = null;
   #roomCache = new Map<string, RoomCacheEntry>();
@@ -917,16 +921,46 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixRawMess
     if (allowlist && allowlist.length > 0 && (!inviter || !allowlist.includes(inviter))) {
       return;
     }
-    try {
-      await this.#requireCore().joinRoom({ roomIdOrAlias: roomId });
-    } catch (error) {
-      this.#logger.warn("Matrix invite join failed", { error, inviter, roomId });
+    if (this.#inviteJoinTasks.has(roomId)) {
+      return;
     }
+    const task = this.#joinInviteWithRetry(roomId, inviter).finally(() => {
+      this.#inviteJoinTasks.delete(roomId);
+    });
+    this.#inviteJoinTasks.set(roomId, task);
+    await task;
+  }
+
+  async #joinInviteWithRetry(roomId: string, inviter?: string): Promise<void> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= INVITE_JOIN_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        await this.#requireCore().joinRoom({ roomIdOrAlias: roomId });
+        return;
+      } catch (error) {
+        lastError = error;
+        if (attempt === INVITE_JOIN_MAX_ATTEMPTS || !isTransientMatrixError(error)) {
+          break;
+        }
+        await sleep(INVITE_JOIN_RETRY_BASE_MS * attempt);
+      }
+    }
+    this.#logger.warn("Matrix invite join failed", { error: lastError, inviter, roomId });
   }
 }
 
 export function createMatrixAdapter(config: MatrixAdapterConfig): MatrixAdapter {
   return new MatrixAdapter(config);
+}
+
+function isTransientMatrixError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\b(408|425|429|500|502|503|504)\b/.test(message) ||
+    /timeout|temporar|ECONNRESET|ETIMEDOUT/i.test(message);
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function extractFilesFromMessage(message: AdapterPostableMessage): FileUpload[] {

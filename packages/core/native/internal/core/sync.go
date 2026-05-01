@@ -39,6 +39,7 @@ func (c *Core) handleSyncOnce(ctx context.Context, payload []byte) ([]byte, erro
 	if err := c.processSyncResponse(ctx, resp, since); err != nil {
 		return nil, err
 	}
+	c.retryPendingDecryptions(ctx)
 	c.nextBatch = resp.NextBatch
 	if c.stores != nil {
 		if err := c.stores.SaveNextBatch(ctx, c.nextBatch); err != nil {
@@ -65,6 +66,7 @@ func (c *Core) handleApplySyncResponse(ctx context.Context, payload []byte) ([]b
 	if err := c.processSyncResponse(ctx, &resp, req.Since); err != nil {
 		return nil, err
 	}
+	c.retryPendingDecryptions(ctx)
 	c.nextBatch = resp.NextBatch
 	if c.stores != nil {
 		if err := c.stores.SaveNextBatch(ctx, c.nextBatch); err != nil {
@@ -150,7 +152,10 @@ func (c *Core) processEvent(ctx context.Context, evt *event.Event) {
 	case event.EventRedaction:
 		c.processRedaction(evt)
 	case event.EventEncrypted:
-		return
+		if converted := c.convertMaybeEncryptedMessageEvent(ctx, evt); converted != nil {
+			c.removePendingDecryption(ctx, evt.ID)
+			c.emit(OutboundEvent{"type": "message", "event": converted})
+		}
 	default:
 		_ = ctx
 	}
@@ -159,6 +164,7 @@ func (c *Core) processEvent(ctx context.Context, evt *event.Event) {
 func (c *Core) convertMaybeEncryptedMessageEvent(ctx context.Context, evt *event.Event) OutboundEvent {
 	decrypted, err := c.decryptIfNeeded(ctx, evt)
 	if err != nil {
+		c.rememberPendingDecryption(ctx, evt)
 		eventData := OutboundEvent{}
 		if evt != nil {
 			eventData["eventId"] = evt.ID.String()
@@ -175,6 +181,7 @@ func (c *Core) convertMaybeEncryptedMessageEvent(ctx context.Context, evt *event
 	if decrypted.Type != event.EventMessage {
 		return nil
 	}
+	c.removePendingDecryption(ctx, evt.ID)
 	return c.convertMessageEvent(decrypted)
 }
 

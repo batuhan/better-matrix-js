@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"maunium.net/go/mautrix"
@@ -9,9 +10,10 @@ import (
 )
 
 const (
-	cryptoStoreFile = "crypto.json"
-	stateStoreFile  = "state.json"
-	nextBatchFile   = "next_batch"
+	cryptoStoreFile       = "crypto.json"
+	decryptionQueuePrefix = "pending-decryption/"
+	stateStoreFile        = "state.json"
+	nextBatchFile         = "next_batch"
 )
 
 type byteStore interface {
@@ -71,4 +73,52 @@ func (bundle *storeBundle) SaveNextBatch(ctx context.Context, nextBatch string) 
 		return bundle.kv.Delete(ctx, bundle.prefix+nextBatchFile)
 	}
 	return bundle.kv.Set(ctx, bundle.prefix+nextBatchFile, []byte(nextBatch))
+}
+
+func (bundle *storeBundle) LoadPendingDecryption(ctx context.Context) ([]pendingDecryption, error) {
+	if bundle == nil || bundle.kv == nil {
+		return nil, nil
+	}
+	keys, err := bundle.kv.List(ctx, bundle.prefix+decryptionQueuePrefix)
+	if err != nil {
+		return nil, err
+	}
+	pending := make([]pendingDecryption, 0, len(keys))
+	for _, key := range keys {
+		raw, err := bundle.kv.Get(ctx, key)
+		if err != nil || raw == nil {
+			return nil, err
+		}
+		var item pendingDecryption
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return nil, err
+		}
+		pending = append(pending, item)
+	}
+	return pending, nil
+}
+
+func (bundle *storeBundle) SavePendingDecryption(ctx context.Context, pending []pendingDecryption) error {
+	if bundle == nil || bundle.kv == nil {
+		return nil
+	}
+	keys, err := bundle.kv.List(ctx, bundle.prefix+decryptionQueuePrefix)
+	if err != nil {
+		return err
+	}
+	for _, key := range keys {
+		if err := bundle.kv.Delete(ctx, key); err != nil {
+			return err
+		}
+	}
+	for _, item := range pending {
+		raw, err := json.Marshal(item)
+		if err != nil {
+			return err
+		}
+		if err := bundle.kv.Set(ctx, bundle.prefix+decryptionQueuePrefix+item.EventID, raw); err != nil {
+			return err
+		}
+	}
+	return nil
 }

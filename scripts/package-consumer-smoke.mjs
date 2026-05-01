@@ -23,16 +23,20 @@ try {
   await mkdir(consumerDir, { recursive: true });
 
   const corePackage = await readPackage(join(rootPath, "packages/core/package.json"));
+  const cloudflarePackage = await readPackage(join(rootPath, "packages/cloudflare/package.json"));
   const adapterPackage = await readPackage(join(rootPath, "packages/chat-adapter/package.json"));
 
+  const cloudflareTarball = await packPackage(cloudflarePackage.name, packDir);
   const coreTarball = await packPackage(corePackage.name, packDir);
   const adapterTarball = await packPackage(adapterPackage.name, packDir);
 
   const dependencies = {
+    [cloudflarePackage.name]: `file:${cloudflareTarball}`,
     [corePackage.name]: `file:${coreTarball}`,
     [adapterPackage.name]: `file:${adapterTarball}`,
   };
   const overrides = {
+    [cloudflarePackage.name]: `file:${cloudflareTarball}`,
     [corePackage.name]: `file:${coreTarball}`,
   };
 
@@ -79,13 +83,15 @@ try {
       `
         import * as core from "better-matrix-js";
         import * as node from "better-matrix-js/node";
-        import * as cloudflare from "better-matrix-js/cloudflare";
+        import * as cloudflare from "@better-matrix-js/cloudflare";
+        import * as cloudflareCompat from "better-matrix-js/cloudflare";
         import * as adapter from "@better-matrix-js/chat-adapter";
 
         const checks = {
           core: ["loadMatrixCore", "startMatrixPolling", "MemoryMatrixStore"].every((key) => key in core),
           node: ["loadMatrixCoreFromNodePackage", "FileMatrixStore", "createFileMatrixStore"].every((key) => key in node),
-          cloudflare: ["createCloudflareKVMatrixStore", "createDurableObjectMatrixStore"].every((key) => key in cloudflare),
+          cloudflare: ["createCloudflareKVMatrixStore", "createDurableObjectMatrixStore", "MatrixSyncDurableObject"].every((key) => key in cloudflare),
+          cloudflareCompat: ["createCloudflareKVMatrixStore", "createDurableObjectMatrixStore", "MatrixSyncDurableObject"].every((key) => key in cloudflareCompat),
           adapter: ["createMatrixAdapter", "MatrixAdapter", "MatrixFormatConverter", "loginMatrix"].every((key) => key in adapter),
         };
 

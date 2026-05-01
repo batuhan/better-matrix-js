@@ -16,13 +16,14 @@ The Matrix core is Go compiled to `GOOS=js GOARCH=wasm`, built directly on `maut
 Durable state is provided by a small host key/value interface. The repo includes:
 
 - Node file storage via `better-matrix-js/node`
-- Cloudflare KV storage via `better-matrix-js/cloudflare`
-- Cloudflare Durable Object storage via `better-matrix-js/cloudflare`
+- Cloudflare KV storage via `@better-matrix-js/cloudflare`
+- Cloudflare Durable Object storage via `@better-matrix-js/cloudflare`
 
 ## Install
 
 ```sh
 npm install better-matrix-js
+npm install @better-matrix-js/cloudflare
 npm install chat @better-matrix-js/chat-adapter
 ```
 
@@ -61,7 +62,15 @@ const adapter = createMatrixAdapter({
 
 ## Worker Usage
 
-Pass a Go runtime plus `wasmModule`, `wasmBytes`, or `wasmUrl` to `createMatrixAdapter()` or `loadMatrixCore()`. On Cloudflare Workers, use `createCloudflareKVMatrixStore()` or `createDurableObjectMatrixStore()` as the host store.
+Pass a Go runtime plus `wasmModule`, `wasmBytes`, or `wasmUrl` to `createMatrixAdapter()` or `loadMatrixCore()`. On Cloudflare Workers, use `createCloudflareKVMatrixStore()` or `createDurableObjectMatrixStore()` from `@better-matrix-js/cloudflare` as the host store.
+
+For webhook-driven bots on Workers, put the Matrix core and crypto store in one
+Durable Object per Matrix account, and run `/sync` from a second Durable Object
+using `MatrixSyncDurableObject`. The sync object stores the `next_batch` cursor,
+long-polls Matrix, posts `{ response, since }` to the core object's webhook, and
+uses Durable Object alarms to re-wake itself after hibernation or transient
+failures. Do not rely on `waitUntil()` inside a Durable Object for this loop;
+the alarm handler awaits each sync pass and schedules the next one.
 
 Cloudflare Worker bundles that inline the Go WASM module are currently about
 4 MB compressed, so they require a Worker plan whose script-size limit allows

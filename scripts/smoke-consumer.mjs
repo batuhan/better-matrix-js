@@ -19,9 +19,10 @@ await execFileAsync("pnpm", ["-r", "--filter", "./packages/*", "pack", "--pack-d
 await execFileAsync("npm", ["init", "-y"], { cwd: await mkdirp(consumerDir) });
 
 const coreTarball = join(packDir, "better-matrix-js-0.1.0.tgz");
+const cloudflareTarball = join(packDir, "better-matrix-js-cloudflare-0.1.0.tgz");
 const adapterTarball = join(packDir, "better-matrix-js-chat-adapter-0.1.0.tgz");
 
-await execFileAsync("npm", ["install", coreTarball, adapterTarball, "chat@4.26.0"], {
+await execFileAsync("npm", ["install", coreTarball, cloudflareTarball, adapterTarball, "chat@4.26.0"], {
   cwd: consumerDir,
 });
 
@@ -33,12 +34,14 @@ const { stdout } = await execFileAsync(
     `
       import * as core from "better-matrix-js";
       import * as node from "better-matrix-js/node";
-      import * as cf from "better-matrix-js/cloudflare";
+      import * as cf from "@better-matrix-js/cloudflare";
+      import * as cfCompat from "better-matrix-js/cloudflare";
       import * as adapter from "@better-matrix-js/chat-adapter";
       const checks = {
         core: ["loadMatrixCore", "startMatrixPolling", "MemoryMatrixStore"].every((key) => key in core),
         node: ["loadMatrixCoreFromNodePackage", "FileMatrixStore"].every((key) => key in node),
-        cloudflare: ["createCloudflareKVMatrixStore", "createDurableObjectMatrixStore"].every((key) => key in cf),
+        cloudflare: ["createCloudflareKVMatrixStore", "createDurableObjectMatrixStore", "MatrixSyncDurableObject"].every((key) => key in cf),
+        cloudflareCompat: ["createCloudflareKVMatrixStore", "createDurableObjectMatrixStore", "MatrixSyncDurableObject"].every((key) => key in cfCompat),
         adapter: ["createMatrixAdapter", "loginMatrix"].every((key) => key in adapter),
       };
       if (!Object.values(checks).every(Boolean)) {

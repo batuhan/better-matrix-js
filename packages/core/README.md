@@ -33,8 +33,17 @@ await core.init({
 import "better-matrix-js/wasm_exec.js";
 import wasmModule from "better-matrix-js/matrix-core.wasm";
 import { loadMatrixCore } from "better-matrix-js";
-import { createDurableObjectMatrixStore } from "better-matrix-js/cloudflare";
+import {
+  createDurableObjectMatrixStore,
+  MatrixSyncDurableObject,
+} from "@better-matrix-js/cloudflare";
 ```
+
+`MatrixSyncDurableObject` is the recommended Worker sync runner for webhook
+ingestion. It stores the Matrix `next_batch` cursor in Durable Object storage,
+long-polls `/_matrix/client/v3/sync`, posts `{ response, since }` to your
+webhook handler, and schedules the next pass with Durable Object alarms so the
+object can re-wake after hibernation.
 
 See the repository `examples/cloudflare-worker` directory for a full Worker
 example.

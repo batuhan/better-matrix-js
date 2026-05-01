@@ -1,12 +1,3 @@
-export {
-  createCloudflareKVMatrixStore,
-  createDurableObjectMatrixStore,
-} from "./cloudflare";
-export type {
-  CloudflareKVNamespaceLike,
-  CloudflareStoreOptions,
-  DurableObjectStorageLike,
-} from "./cloudflare";
 export { MemoryMatrixStore } from "./memory-store";
 export { startMatrixPolling } from "./polling";
 export type { MatrixPollingHandle, MatrixPollingOptions } from "./polling";

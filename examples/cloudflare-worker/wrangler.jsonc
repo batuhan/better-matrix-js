@@ -2,10 +2,25 @@
   "name": "better-matrix-js-example",
   "main": "src/index.js",
   "compatibility_date": "2026-04-24",
-  "kv_namespaces": [
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MATRIX_CORE",
+        "class_name": "MatrixCoreObject"
+      },
+      {
+        "name": "MATRIX_SYNC",
+        "class_name": "MatrixSyncObject"
+      }
+    ]
+  },
+  "migrations": [
     {
-      "binding": "MATRIX_STORE",
-      "id": "replace-with-your-kv-namespace-id"
+      "tag": "v1",
+      "new_classes": ["MatrixCoreObject", "MatrixSyncObject"]
     }
-  ]
+  ],
+  "vars": {
+    "MATRIX_SYNC_WEBHOOK_URL": "https://replace-with-your-worker.example.com/matrix/webhook"
+  }
 }
