@@ -1,137 +1,104 @@
 # better-matrix-js
 
-Experimental monorepo for a TypeScript Matrix SDK and a Chat SDK adapter.
+A TypeScript Matrix SDK that runs anywhere. Node, Cloudflare Workers, browsers, any WASM runtime.
 
-Packages:
+Built on `mautrix-go` + `goolm` compiled to WebAssembly. No `matrix-js-sdk`, no Rust crypto sidecar, no Node FFI. End-to-end encryption works out of the box.
 
-- `better-matrix-js`: Matrix core for Node, Cloudflare Workers, browsers, and other WebAssembly runtimes.
-- `@better-matrix-js/chat-adapter`: Chat SDK adapter built on top of the core package.
+## Packages
 
-The core package uses Matrix terminology and exposes room/message/relation APIs. The adapter translates those APIs into Chat SDK terminology.
+| Package | What it is |
+| --- | --- |
+| [`better-matrix-js`](packages/core) | Matrix core. Login, sync, rooms, messages, reactions, threads, media, E2EE. |
+| [`@better-matrix-js/chat-adapter`](packages/chat-adapter) | [Chat SDK](https://www.npmjs.com/package/chat) adapter on top of the core. |
+| [`@better-matrix-js/cloudflare`](packages/cloudflare) | KV / Durable Object storage + a long-poll sync Durable Object for Workers. |
+| [`@better-matrix-js/ai-sdk`](packages/ai-sdk) | Adapt AI SDK UI message streams into the chat-adapter `stream()` API. |
 
-## Runtime
+## Quick start
 
-The Matrix core is Go compiled to `GOOS=js GOARCH=wasm`, built directly on `mautrix-go` with `goolm` for E2EE. It does not use `matrix-js-sdk`, Rust crypto binaries, a sidecar process, or Node FFI.
-
-Durable state is provided by a small host key/value interface. The repo includes:
-
-- Node file storage via `better-matrix-js/node`
-- Cloudflare KV storage via `@better-matrix-js/cloudflare`
-- Cloudflare Durable Object storage via `@better-matrix-js/cloudflare`
-
-## Install
+### Node bot (Chat SDK)
 
 ```sh
-npm install better-matrix-js
-npm install @better-matrix-js/cloudflare
-npm install chat @better-matrix-js/chat-adapter
+npm install chat better-matrix-js @better-matrix-js/chat-adapter
 ```
 
-For local development:
+```ts
+import { Chat } from "chat";
+import { FileMatrixStore, loadMatrixCoreFromNodePackage } from "better-matrix-js/node";
+import { createMatrixAdapter } from "@better-matrix-js/chat-adapter";
+
+const matrix = createMatrixAdapter({
+  accessToken: process.env.MATRIX_ACCESS_TOKEN!,
+  homeserverUrl: "https://matrix.example.org",
+  createCore: () =>
+    loadMatrixCoreFromNodePackage({
+      host: { store: new FileMatrixStore(".matrix-store") },
+    }),
+  recoveryKey: process.env.MATRIX_RECOVERY_KEY,
+});
+
+const bot = new Chat({ adapters: { matrix } });
+
+bot.onNewMention(async (thread, message) => {
+  await thread.subscribe();
+  await thread.post(`echo: ${message.text}`);
+});
+
+await bot.initialize();
+```
+
+### Raw Matrix core (no Chat SDK)
+
+```ts
+import { FileMatrixStore, loadMatrixCoreFromNodePackage } from "better-matrix-js/node";
+
+const core = await loadMatrixCoreFromNodePackage({
+  host: { store: new FileMatrixStore(".matrix-store") },
+});
+
+await core.init({
+  accessToken: process.env.MATRIX_ACCESS_TOKEN!,
+  homeserverUrl: "https://matrix.example.org",
+});
+
+await core.postMessage({ roomId: "!room:example.org", body: "hello" });
+```
+
+### Cloudflare Worker
+
+See [`examples/cloudflare-worker`](examples/cloudflare-worker). The recipe: one Durable Object per Matrix account holds the core + crypto store, a second one (`MatrixSyncDurableObject`) long-polls `/sync` and webhooks the response back. Worker bundles are ~4 MB compressed because of the Go WASM payload.
+
+## Examples
+
+- [`examples/cloudflare-worker`](examples/cloudflare-worker) — minimal Worker with both Durable Objects wired up.
+- [`examples/beeper-streaming-smoke`](examples/beeper-streaming-smoke) — Node bot that streams rich AI-style markdown into Matrix rooms.
+
+## Develop
 
 ```sh
 pnpm install
-pnpm build
+pnpm build      # compiles TS + builds matrix-core.wasm via Go
+pnpm test       # unit tests
+pnpm typecheck
 ```
 
-The build emits `matrix-core.wasm` and Go's `wasm_exec.js` in the core package
-dist.
+Live E2E tests need real credentials — they never create accounts:
 
-## Node Usage
-
-```ts
-import {
-  FileMatrixStore,
-  loadMatrixCoreFromNodePackage,
-} from "better-matrix-js/node";
-import { createMatrixAdapter } from "@better-matrix-js/chat-adapter";
-
-const core = await loadMatrixCoreFromNodePackage({
-  host: {
-    store: new FileMatrixStore(".matrix-store/my-account"),
-  },
-});
-
-const adapter = createMatrixAdapter({
-  accessToken,
-  core,
-  homeserverUrl: "https://matrix.example.org",
-  recoveryCode,
-});
+```sh
+MATRIX_HOMESERVER_URL=https://matrix.example.org \
+MATRIX_BOT_ACCESS_TOKEN=... \
+MATRIX_PEER_ACCESS_TOKEN=... \
+pnpm test:live
 ```
 
-## Worker Usage
+## Publish
 
-Pass a Go runtime plus `wasmModule`, `wasmBytes`, or `wasmUrl` to `createMatrixAdapter()` or `loadMatrixCore()`. On Cloudflare Workers, use `createCloudflareKVMatrixStore()` or `createDurableObjectMatrixStore()` from `@better-matrix-js/cloudflare` as the host store.
-
-For webhook-driven bots on Workers, put the Matrix core and crypto store in one
-Durable Object per Matrix account, and run `/sync` from a second Durable Object
-using `MatrixSyncDurableObject`. The sync object stores the `next_batch` cursor,
-long-polls Matrix, posts `{ response, since }` to the core object's webhook, and
-uses Durable Object alarms to re-wake itself after hibernation or transient
-failures. Do not rely on `waitUntil()` inside a Durable Object for this loop;
-the alarm handler awaits each sync pass and schedules the next one.
-
-Cloudflare Worker bundles that inline the Go WASM module are currently about
-4 MB compressed, so they require a Worker plan whose script-size limit allows
-that payload. See `examples/cloudflare-worker` for a minimal smoke-tested Worker.
-
-## Release
-
-Use pnpm for publishing so workspace ranges are rewritten into npm versions:
+Always publish with pnpm so workspace ranges get rewritten:
 
 ```sh
 pnpm check
 pnpm publish:packages
 ```
 
-Do not publish the adapter with direct `npm publish` from its package directory.
+## License
 
-## Implemented
-
-- Access-token initialization; `whoami` derives Matrix `userId` and `deviceId`.
-- Password login and token/JWT login helpers.
-- `/sync` long polling with durable next-batch storage.
-- Mautrix E2EE pipeline: state-store sync, to-device processing, Olm/Megolm init, encrypted send/receive, recovery-code/passphrase verification, cross-signing restore, and key-backup download.
-- Matrix messages: send, edit, delete, fetch one, fetch room history, fetch thread history, formatted HTML, mentions, replies, and read receipts.
-- Matrix reactions, including redaction/removal events.
-- Matrix rooms: room info, direct messages, join, leave, invite, joined-room listing, typing state, and invite auto-join in the Chat SDK adapter.
-- Matrix media: upload/download, encrypted upload/download, media message send, and Chat SDK attachment rehydration.
-- Matrix room threads via `m.thread` relations and `GET /_matrix/client/v1/rooms/{roomId}/threads`.
-- Chat SDK adapter methods for message post/edit/delete, reactions, typing, message fetch, channel fetch, room-thread listing, DMs, slash commands, formatted rendering, attachments, and Matrix-backed thread IDs.
-
-## Live E2E
-
-The committed live test harness uses only environment-provided Matrix credentials. It does not create accounts.
-
-Required:
-
-```sh
-MATRIX_HOMESERVER_URL=https://matrix.example.org
-MATRIX_BOT_ACCESS_TOKEN=...
-MATRIX_PEER_ACCESS_TOKEN=...
-```
-
-Optional:
-
-```sh
-MATRIX_BOT_RECOVERY_KEY=...
-MATRIX_PEER_RECOVERY_KEY=...
-```
-
-Run after `pnpm build`:
-
-```sh
-pnpm test:live
-```
-
-Unit tests do not require live credentials:
-
-```sh
-pnpm test
-```
-
-## Public Safety
-
-The live E2E harness is environment driven and intentionally does not contain
-account-creation logic or hardcoded homeserver credentials.
+Core and Cloudflare packages: MPL-2.0. Chat adapter and AI SDK packages: MIT.

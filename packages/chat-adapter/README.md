@@ -1,42 +1,120 @@
 # @better-matrix-js/chat-adapter
 
-Matrix adapter for Chat SDK, backed by `better-matrix-js`.
+[Chat SDK](https://www.npmjs.com/package/chat) adapter for Matrix. Build a Matrix bot the same way you'd build a Slack or Discord bot.
 
 ```sh
 npm install chat better-matrix-js @better-matrix-js/chat-adapter
 ```
 
+## Usage
+
 ```ts
-import {
-  FileMatrixStore,
-  loadMatrixCoreFromNodePackage,
-} from "better-matrix-js/node";
+import { Chat } from "chat";
+import { FileMatrixStore, loadMatrixCoreFromNodePackage } from "better-matrix-js/node";
 import { createMatrixAdapter } from "@better-matrix-js/chat-adapter";
 
-const core = await loadMatrixCoreFromNodePackage({
-  host: {
-    store: new FileMatrixStore(".matrix-store/my-account"),
-  },
-});
-
-const adapter = createMatrixAdapter({
-  accessToken,
-  core,
+const matrix = createMatrixAdapter({
+  accessToken: process.env.MATRIX_ACCESS_TOKEN!,
   homeserverUrl: "https://matrix.example.org",
-  recoveryCode,
+  createCore: () =>
+    loadMatrixCoreFromNodePackage({
+      host: { store: new FileMatrixStore(".matrix-store") },
+    }),
+  recoveryKey: process.env.MATRIX_RECOVERY_KEY,    // optional, enables E2EE
+  inviteAutoJoin: { inviterAllowlist: ["@me:example.org"] },
+  userName: "matrix-bot",
+});
+
+const bot = new Chat({ adapters: { matrix } });
+
+bot.onNewMention(async (thread, message) => {
+  await thread.subscribe();
+  await thread.post(`echo: ${message.text}`);
+});
+
+await bot.initialize();
+```
+
+That's it. The adapter starts long-polling `/sync` automatically and forwards Matrix events into Chat SDK threads.
+
+## Login with password
+
+If you don't have an access token yet:
+
+```ts
+import { loginMatrix } from "@better-matrix-js/chat-adapter";
+
+const { accessToken } = await loginMatrix({
+  homeserverUrl: "https://matrix.example.org",
+  username: "bot",
+  password: process.env.MATRIX_PASSWORD!,
+  initialDeviceDisplayName: "my bot",
 });
 ```
 
-## Sync responses
+There's also `loginMatrixWithToken()` for token / JWT login.
 
-For serverless bots, run Matrix `/sync` elsewhere and pass the sync response to
-`adapter.handleSyncResponse()`:
+## Streaming responses (AI bots)
 
-```json
-{ "response": { "next_batch": "..." }, "since": "previous_batch" }
+Stream markdown into a Matrix message with progressive edits. Pass any async iterable of AI-SDK-shaped chunks:
+
+```ts
+await matrix.stream(
+  matrix.encodeThreadId({ roomId }),
+  agentStream(message.text),
+);
+
+async function* agentStream(prompt: string) {
+  yield { type: "markdown_text", text: "Thinking…\n\n" };
+  for (const word of answer.split(" ")) {
+    yield { type: "markdown_text", text: word + " " };
+  }
+  yield { type: "finish", finishReason: "stop" };
+}
 ```
 
-If your transport receives encrypted payloads, decrypt and authenticate them at
-the edge before calling `handleSyncResponse()`. Matrix event E2EE is handled by
-the mautrix/go core after the sync response is applied, so use durable core
-storage for crypto state.
+On Beeper homeservers this uses Beeper's native streaming events; elsewhere it falls back to debounced edits. To wire the AI SDK directly, see [`@better-matrix-js/ai-sdk`](https://github.com/batuhan/better-matrix-js/tree/main/packages/ai-sdk).
+
+## Serverless / webhook sync
+
+If you run `/sync` outside the worker (e.g. from a Durable Object), disable the built-in poller and feed responses in:
+
+```ts
+const matrix = createMatrixAdapter({
+  /* … */,
+  polling: { enabled: false },
+});
+
+await matrix.handleSyncResponse({ response, since });
+```
+
+## Thread IDs
+
+Chat SDK thread IDs encode `{ roomId, eventId? }`. Use the helpers when you need to cross between Matrix room IDs and Chat SDK thread IDs:
+
+```ts
+matrix.encodeThreadId({ roomId: "!room:example.org" });
+matrix.decodeThreadId(threadId); // => { roomId, eventId? }
+matrix.channelIdFromThreadId(threadId);
+```
+
+## Config reference
+
+```ts
+createMatrixAdapter({
+  accessToken,                                  // required
+  homeserverUrl,                                // required
+  core | createCore | wasmModule | wasmBytes | wasmUrl, // pick one
+  recoveryKey | recoveryCode | pickleKey,       // optional, for E2EE
+  inviteAutoJoin: { inviterAllowlist },         // optional
+  roomAllowlist,                                // optional
+  polling: { enabled, retryDelayMs, timeoutMs },
+  typingTimeoutMs,
+  commandPrefix,
+  userName,
+});
+```
+
+## License
+
+MIT
