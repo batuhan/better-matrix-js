@@ -1,17 +1,15 @@
 package core
 
-import "encoding/json"
-
 // ts:export MatrixRawEvent
 type tsRawEvent struct {
-	Content        map[string]any  `json:"content"`
-	EventID        string          `json:"eventId"`
-	IsMe           *bool           `json:"isMe,omitempty"`
-	OriginServerTS *int64          `json:"originServerTs,omitempty"`
-	Raw            json.RawMessage `json:"raw"`
-	RoomID         string          `json:"roomId"`
-	Sender         string          `json:"sender"`
-	Type           string          `json:"type"`
+	Content        map[string]any `json:"content"`
+	EventID        string         `json:"eventId"`
+	IsMe           *bool          `json:"isMe,omitempty"`
+	OriginServerTS *int64         `json:"originServerTs,omitempty"`
+	Raw            any            `json:"raw"`
+	RoomID         string         `json:"roomId"`
+	Sender         string         `json:"sender"`
+	Type           string         `json:"type"`
 }
 
 // ts:export MatrixMentions
@@ -68,6 +66,37 @@ type tsMessageEvent struct {
 	ThreadRootEventID *string             `json:"threadRootEventId,omitempty"`
 }
 
+func (evt *tsMessageEvent) setThreadRoot(threadRoot string) {
+	if threadRoot != "" && evt.ThreadRootEventID == nil {
+		evt.ThreadRootEventID = &threadRoot
+	}
+}
+
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func boolValue(value *bool) bool {
+	return value != nil && *value
+}
+
+func int64Value(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
 // ts:export MatrixReactionEvent
 type tsReactionEvent struct {
 	tsRawEvent
@@ -78,9 +107,9 @@ type tsReactionEvent struct {
 
 // ts:export MatrixInviteEvent
 type tsInviteEvent struct {
-	Inviter *string         `json:"inviter,omitempty"`
-	Raw     json.RawMessage `json:"raw"`
-	RoomID  string          `json:"roomId"`
+	Inviter *string `json:"inviter,omitempty"`
+	Raw     any     `json:"raw"`
+	RoomID  string  `json:"roomId"`
 }
 
 // ts:export MatrixRoomThreadSummary

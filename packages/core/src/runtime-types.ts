@@ -272,6 +272,11 @@ export interface MatrixSyncOnceOptions {
   timeoutMs?: number;
 }
 
+export interface MatrixSyncStartOptions {
+  retryDelayMs?: number;
+  timeoutMs?: number;
+}
+
 export interface MatrixApplySyncResponseOptions {
   response: unknown;
   since?: string;
@@ -334,6 +339,8 @@ export interface MatrixCore {
   removeReaction(options: MatrixReactionOptions): Promise<void>;
   sendEphemeralEvent(options: MatrixSendEphemeralEventOptions): Promise<MatrixRawMessage>;
   setTyping(options: MatrixTypingOptions): Promise<void>;
+  startSync(options?: MatrixSyncStartOptions): Promise<void>;
+  stopSync(): Promise<void>;
   syncOnce(options?: MatrixSyncOnceOptions): Promise<void>;
   uploadEncryptedMedia(options: MatrixUploadMediaOptions): Promise<MatrixUploadEncryptedMediaResult>;
   uploadMedia(options: MatrixUploadMediaOptions): Promise<MatrixUploadMediaResult>;

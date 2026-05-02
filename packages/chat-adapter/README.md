@@ -33,7 +33,7 @@ bot.onNewMention(async (thread, message) => {
 await bot.initialize();
 ```
 
-That's it. The adapter starts long-polling `/sync` automatically and forwards Matrix events into Chat SDK threads.
+That's it. The adapter starts long-sync `/sync` automatically and forwards Matrix events into Chat SDK threads.
 
 ## Login with password
 
@@ -81,7 +81,7 @@ If you run `/sync` outside the worker (e.g. from a Durable Object), disable the 
 ```ts
 const matrix = createMatrixAdapter({
   /* … */,
-  polling: { enabled: false },
+  sync: { enabled: false },
 });
 
 await matrix.handleSyncResponse({ response, since });
@@ -107,7 +107,7 @@ createMatrixAdapter({
   recoveryKey | recoveryCode | pickleKey,       // optional, for E2EE
   inviteAutoJoin: { inviterAllowlist },         // optional
   roomAllowlist,                                // optional
-  polling: { enabled, retryDelayMs, timeoutMs },
+  sync: { enabled, retryDelayMs, timeoutMs },
   typingTimeoutMs,
   commandPrefix,
 });

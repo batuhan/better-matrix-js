@@ -116,6 +116,26 @@ describe("createMatrixClient", () => {
       })
     );
   });
+
+  it("delegates sync loop lifetime to the runtime", async () => {
+    const calls = installRuntime({
+      init: { deviceId: "DEVICE", userId: "@bot:example.com" },
+      start_sync: {},
+      stop_sync: {},
+    });
+    const client = createMatrixClient({
+      homeserver: "https://matrix.example.com",
+      token: "token",
+      wasmModule: {} as WebAssembly.Module,
+    });
+    await client.connect();
+
+    await client.sync.start({ retryDelayMs: 250, timeoutMs: 12_345 });
+    await client.sync.stop();
+
+    expect(calls.map((call) => call.operation)).toEqual(["init", "start_sync", "stop_sync"]);
+    expect(calls[1]?.payload).toEqual({ retryDelayMs: 250, timeoutMs: 12_345 });
+  });
 });
 
 function installRuntime(responses: Record<string, unknown>): RuntimeCall[] {

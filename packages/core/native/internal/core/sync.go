@@ -19,21 +19,125 @@ type syncOnceReq struct {
 	TimeoutMS int `json:"timeoutMs,omitempty"`
 }
 
+type syncStartReq struct {
+	RetryDelayMS int `json:"retryDelayMs,omitempty"`
+	TimeoutMS    int `json:"timeoutMs,omitempty"`
+}
+
+const (
+	defaultSyncTimeoutMS = 30000
+	defaultRetryDelayMS  = 1000
+	maxRetryDelayMS      = 30000
+)
+
 func (c *Core) handleSyncOnce(ctx context.Context, payload []byte) ([]byte, error) {
-	started := time.Now()
 	c.syncMu.Lock()
 	defer c.syncMu.Unlock()
 
-	cli, err := c.requireClient()
-	if err != nil {
-		return nil, err
-	}
 	var req syncOnceReq
 	_ = json.Unmarshal(payload, &req)
 	if req.TimeoutMS <= 0 {
-		req.TimeoutMS = 30000
+		req.TimeoutMS = defaultSyncTimeoutMS
 	}
-	timeoutMS := req.TimeoutMS
+	if err := c.syncOnce(ctx, req.TimeoutMS, true); err != nil {
+		return nil, err
+	}
+	return c.empty()
+}
+
+func (c *Core) handleStartSync(payload []byte) ([]byte, error) {
+	var req syncStartReq
+	_ = json.Unmarshal(payload, &req)
+	if req.TimeoutMS <= 0 {
+		req.TimeoutMS = defaultSyncTimeoutMS
+	}
+	if req.RetryDelayMS <= 0 {
+		req.RetryDelayMS = defaultRetryDelayMS
+	}
+
+	c.syncLoopMu.Lock()
+	defer c.syncLoopMu.Unlock()
+	if c.syncLoopCancel != nil {
+		return c.empty()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	c.syncLoopCancel = cancel
+	c.syncLoopDone = done
+	go c.runSyncLoop(ctx, done, req)
+	return c.empty()
+}
+
+func (c *Core) handleStopSync() ([]byte, error) {
+	c.syncLoopMu.Lock()
+	cancel := c.syncLoopCancel
+	done := c.syncLoopDone
+	c.syncLoopMu.Unlock()
+	if cancel == nil {
+		c.emit(OutboundEvent{"type": "sync_status", "status": "stopped"})
+		return c.empty()
+	}
+	cancel()
+	if done != nil {
+		<-done
+	}
+	return c.empty()
+}
+
+func (c *Core) runSyncLoop(ctx context.Context, done chan struct{}, req syncStartReq) {
+	defer func() {
+		c.syncLoopMu.Lock()
+		c.syncLoopCancel = nil
+		c.syncLoopDone = nil
+		c.syncLoopMu.Unlock()
+		c.emit(OutboundEvent{"type": "sync_status", "status": "stopped"})
+		close(done)
+	}()
+
+	failures := 0
+	for {
+		c.syncMu.Lock()
+		err := c.syncOnce(ctx, req.TimeoutMS, false)
+		c.syncMu.Unlock()
+		if err == nil {
+			failures = 0
+			continue
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		failures++
+		nextRetryMS := maxRetryDelayMS
+		if failures < 16 {
+			nextRetryMS = req.RetryDelayMS << (failures - 1)
+		}
+		if nextRetryMS > maxRetryDelayMS {
+			nextRetryMS = maxRetryDelayMS
+		}
+		c.emit(OutboundEvent{
+			"type":        "sync_status",
+			"status":      "retrying",
+			"error":       err.Error(),
+			"failures":    failures,
+			"nextRetryMs": nextRetryMS,
+		})
+		timer := time.NewTimer(time.Duration(nextRetryMS) * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+	}
+}
+
+func (c *Core) syncOnce(ctx context.Context, timeoutMS int, emitFailure bool) error {
+	started := time.Now()
+
+	cli, err := c.requireClient()
+	if err != nil {
+		return err
+	}
 	filterID := liveSyncFilter
 	skipTimelines := c.skipNextSync
 	if skipTimelines {
@@ -52,20 +156,22 @@ func (c *Core) handleSyncOnce(ctx context.Context, payload []byte) ([]byte, erro
 		})
 	})
 	if err != nil {
-		c.emit(OutboundEvent{
-			"type":       "sync_status",
-			"status":     "retrying",
-			"error":      err.Error(),
-			"durationMs": time.Since(started).Milliseconds(),
-		})
-		return nil, err
+		if emitFailure {
+			c.emit(OutboundEvent{
+				"type":       "sync_status",
+				"status":     "retrying",
+				"error":      err.Error(),
+				"durationMs": time.Since(started).Milliseconds(),
+			})
+		}
+		return err
 	}
 	since := c.nextBatch
 	if skipTimelines {
 		clearRoomTimelines(resp)
 	}
 	if err := c.processSyncResponse(ctx, resp, since); err != nil {
-		return nil, err
+		return err
 	}
 	if !skipTimelines {
 		c.retryPendingDecryptions(ctx)
@@ -74,11 +180,11 @@ func (c *Core) handleSyncOnce(ctx context.Context, payload []byte) ([]byte, erro
 	c.skipNextSync = false
 	if c.stores != nil {
 		if err := c.stores.SaveNextBatch(ctx, c.nextBatch); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	c.emit(OutboundEvent{"type": "sync_status", "status": "synced", "durationMs": time.Since(started).Milliseconds()})
-	return c.empty()
+	return nil
 }
 
 func clearRoomTimelines(resp *mautrix.RespSync) {
@@ -190,10 +296,10 @@ func (c *Core) processInvites(resp *mautrix.RespSync) {
 		}
 		c.emit(OutboundEvent{
 			"type": "invite",
-			"event": OutboundEvent{
-				"inviter": inviter,
-				"raw":     room,
-				"roomId":  roomID.String(),
+			"event": tsInviteEvent{
+				Inviter: optionalString(inviter),
+				Raw:     room,
+				RoomID:  roomID.String(),
 			},
 		})
 	}
@@ -239,7 +345,7 @@ func (c *Core) processEvent(ctx context.Context, evt *event.Event) {
 	}
 }
 
-func (c *Core) convertMaybeEncryptedMessageEvent(ctx context.Context, evt *event.Event) OutboundEvent {
+func (c *Core) convertMaybeEncryptedMessageEvent(ctx context.Context, evt *event.Event) *tsMessageEvent {
 	decrypted, err := c.decryptIfNeeded(ctx, evt)
 	if err != nil {
 		c.rememberPendingDecryption(ctx, evt)

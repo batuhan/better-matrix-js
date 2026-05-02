@@ -344,7 +344,7 @@ describe("MatrixAdapter", () => {
     const adapter = new MatrixAdapter({
       token: "token",
       client,
-      polling: { enabled: false },
+      sync: { enabled: false },
     });
 
     await adapter.initialize(makeChat());
@@ -364,7 +364,7 @@ describe("MatrixAdapter", () => {
       homeserver: "https://matrix.example.com",
       initialSync: "persisted",
       since: "s123",
-      polling: { enabled: false },
+      sync: { enabled: false },
       userId: "@bot:example.com",
     });
     await adapter.initialize(makeChat());
@@ -378,7 +378,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.example.com",
-      polling: { enabled: false },
+      sync: { enabled: false },
     });
     await adapter.initialize(makeChat());
 
@@ -411,7 +411,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.example.com",
-      polling: { enabled: false },
+      sync: { enabled: false },
     });
     await adapter.initialize(makeChat());
 
@@ -463,7 +463,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.example.com",
-      polling: { enabled: false },
+      sync: { enabled: false },
     });
     await adapter.initialize(makeChat());
 
@@ -528,7 +528,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.example.com",
-      polling: { enabled: false },
+      sync: { enabled: false },
     });
     await adapter.initialize(makeChat());
 
@@ -556,7 +556,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.example.com",
-      polling: { enabled: false },
+      sync: { enabled: false },
     });
     await adapter.initialize(chat);
 
@@ -592,7 +592,7 @@ describe("MatrixAdapter", () => {
       client,
       homeserver: "https://matrix.example.com",
       inviteAutoJoin: { inviterAllowlist: ["@alice:example.com"] },
-      polling: { enabled: false },
+      sync: { enabled: false },
     });
     await adapter.initialize(makeChat());
 
@@ -621,7 +621,7 @@ describe("MatrixAdapter", () => {
       client,
         homeserver: "https://matrix.example.com",
         inviteAutoJoin: { inviterAllowlist: ["@alice:example.com"] },
-        polling: { enabled: false },
+        sync: { enabled: false },
       });
       await adapter.initialize(makeChat());
 
@@ -650,7 +650,7 @@ describe("MatrixAdapter", () => {
       commandPrefix: "/",
       client,
       homeserver: "https://matrix.example.com",
-      polling: { enabled: false },
+      sync: { enabled: false },
     });
     await adapter.initialize(chat);
 
@@ -687,7 +687,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.example.com",
-      polling: { enabled: false },
+      sync: { enabled: false },
     });
     await adapter.initialize(makeChat());
 
@@ -714,7 +714,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.beeper.com",
-      polling: { enabled: false },
+      sync: { enabled: false },
     });
     await adapter.initialize(makeChat());
 
@@ -818,7 +818,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.beeper-dev.com",
-      polling: { enabled: false },
+      sync: { enabled: false },
     });
     await adapter.initialize(makeChat());
 
@@ -870,7 +870,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.beeper-staging.com",
-      polling: { enabled: false },
+      sync: { enabled: false },
     });
     await adapter.initialize(makeChat());
 
@@ -941,7 +941,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.beeper.com",
-      polling: { enabled: false },
+      sync: { enabled: false },
     });
     await adapter.initialize(makeChat());
 
@@ -999,7 +999,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.example.com",
-      polling: { enabled: false },
+      sync: { enabled: false },
     });
     await adapter.initialize(makeChat());
 
@@ -1027,7 +1027,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.example.com",
-      polling: { enabled: false },
+      sync: { enabled: false },
     });
     await adapter.initialize(makeChat());
     const threadId = encodeMatrixChatThreadRef({ roomId: "!room:example.com" });
@@ -1062,7 +1062,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.example.com",
-      polling: { enabled: false },
+      sync: { enabled: false },
     });
     await adapter.initialize(makeChat());
 
@@ -1082,7 +1082,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.example.com",
-      polling: { enabled: false },
+      sync: { enabled: false },
     });
     await adapter.initialize(makeChat());
 

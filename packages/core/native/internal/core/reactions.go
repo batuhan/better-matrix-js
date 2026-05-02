@@ -102,19 +102,23 @@ func (c *Core) processRedaction(evt *event.Event) {
 }
 
 func (c *Core) emitReaction(snapshot reactionSnapshot, added bool) {
+	isMe := snapshot.Sender == c.userID
+	content := map[string]any{}
 	c.emit(OutboundEvent{
 		"type": "reaction",
-		"event": OutboundEvent{
-			"added":            added,
-			"content":          map[string]any{},
-			"eventId":          snapshot.EventID.String(),
-			"isMe":             snapshot.Sender == c.userID,
-			"key":              snapshot.Key,
-			"raw":              snapshot.Raw,
-			"relatesToEventId": snapshot.RelatesToEventID.String(),
-			"roomId":           snapshot.RoomID.String(),
-			"sender":           snapshot.Sender.String(),
-			"type":             event.EventReaction.Type,
+		"event": tsReactionEvent{
+			tsRawEvent: tsRawEvent{
+				Content: content,
+				EventID: snapshot.EventID.String(),
+				IsMe:    &isMe,
+				Raw:     snapshot.Raw,
+				RoomID:  snapshot.RoomID.String(),
+				Sender:  snapshot.Sender.String(),
+				Type:    event.EventReaction.Type,
+			},
+			Added:            &added,
+			Key:              snapshot.Key,
+			RelatesToEventID: snapshot.RelatesToEventID.String(),
 		},
 	})
 }

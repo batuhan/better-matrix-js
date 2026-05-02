@@ -15,7 +15,7 @@ interface MatrixAdapterBaseConfig {
   homeserver?: string;
   initialSync?: "persisted" | "latest" | "catchUp";
   pickleKey?: string;
-  polling?: {
+  sync?: {
     enabled?: boolean;
     retryDelayMs?: number;
     timeoutMs?: number;

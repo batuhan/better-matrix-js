@@ -338,40 +338,56 @@ func mediaMsgType(contentType string) event.MessageType {
 	}
 }
 
-func messageAttachments(content *event.MessageEventContent) []OutboundEvent {
+func messageAttachments(content *event.MessageEventContent) []tsMediaAttachment {
 	if content == nil || !content.MsgType.IsMedia() {
 		return nil
 	}
-	attachment := OutboundEvent{
-		"filename": content.GetFileName(),
-		"msgtype":  string(content.MsgType),
+	attachment := tsMediaAttachment{
+		Filename: optionalString(content.GetFileName()),
+		Msgtype:  string(content.MsgType),
 	}
 	if content.URL != "" {
-		attachment["contentUri"] = string(content.URL)
+		contentURI := string(content.URL)
+		attachment.ContentURI = &contentURI
 	}
 	if content.File != nil {
-		attachment["encryptedFile"] = encryptedFileFromEvent(content.File)
+		file := encryptedFileFromEvent(content.File)
+		attachment.EncryptedFile = &tsEncryptedFile{
+			Hashes: file.Hashes,
+			IV:     file.IV,
+			Key: tsEncryptedFileKey{
+				Alg:    file.Key.Alg,
+				Ext:    file.Key.Ext,
+				K:      file.Key.K,
+				KeyOps: file.Key.KeyOps,
+				Kty:    file.Key.Kty,
+			},
+			URL: file.URL,
+			V:   file.V,
+		}
 	}
 	if content.Info != nil {
-		info := OutboundEvent{}
+		info := tsMediaInfo{}
 		if content.Info.MimeType != "" {
-			info["contentType"] = content.Info.MimeType
+			info.ContentType = &content.Info.MimeType
 		}
 		if content.Info.Duration > 0 {
-			info["duration"] = content.Info.Duration
+			duration := int64(content.Info.Duration)
+			info.Duration = &duration
 		}
 		if content.Info.Height > 0 {
-			info["height"] = content.Info.Height
+			info.Height = &content.Info.Height
 		}
 		if content.Info.Size > 0 {
-			info["size"] = content.Info.Size
+			size := int64(content.Info.Size)
+			info.Size = &size
 		}
 		if content.Info.Width > 0 {
-			info["width"] = content.Info.Width
+			info.Width = &content.Info.Width
 		}
-		attachment["info"] = info
+		attachment.Info = &info
 	}
-	return []OutboundEvent{attachment}
+	return []tsMediaAttachment{attachment}
 }
 
 func encryptedFileFromEvent(file *event.EncryptedFileInfo) encryptedFile {

@@ -39,7 +39,7 @@ func (c *Core) handleListRoomThreads(ctx context.Context, payload []byte) ([]byt
 	if err != nil {
 		return nil, err
 	}
-	threads := make([]OutboundEvent, 0, len(response.Chunk))
+	threads := make([]tsRoomThreadSummary, 0, len(response.Chunk))
 	for _, evt := range response.Chunk {
 		if evt != nil && evt.RoomID == "" {
 			evt.RoomID = id.RoomID(req.RoomID)
@@ -54,9 +54,9 @@ func (c *Core) handleListRoomThreads(ctx context.Context, payload []byte) ([]byt
 				replyCount = chunk.Count
 			}
 		}
-		threads = append(threads, OutboundEvent{
-			"replyCount": replyCount,
-			"root":       root,
+		threads = append(threads, tsRoomThreadSummary{
+			ReplyCount: &replyCount,
+			Root:       *root,
 		})
 	}
 	return json.Marshal(OutboundEvent{"threads": threads, "nextCursor": response.NextBatch})

@@ -185,18 +185,25 @@ func (c *Core) handleEditMessage(ctx context.Context, payload []byte) ([]byte, e
 	if err != nil {
 		return nil, err
 	}
-	c.rememberEdit(OutboundEvent{
-		"body":               newContent.Body,
-		"eventId":            req.MessageID,
-		"formattedBody":      newContent.FormattedBody,
-		"isEdited":           true,
-		"isMe":               true,
-		"msgtype":            string(newContent.MsgType),
-		"originServerTs":     time.Now().UnixMilli(),
-		"replacementEventId": resp.EventID.String(),
-		"roomId":             req.RoomID,
-		"sender":             c.userID.String(),
-		"type":               event.EventMessage.Type,
+	now := time.Now().UnixMilli()
+	isMe := true
+	isEdited := true
+	c.rememberEdit(&tsMessageEvent{
+		tsRawEvent: tsRawEvent{
+			Content:        newContentMap,
+			EventID:        req.MessageID,
+			IsMe:           &isMe,
+			OriginServerTS: &now,
+			Raw:            resp,
+			RoomID:         req.RoomID,
+			Sender:         c.userID.String(),
+			Type:           event.EventMessage.Type,
+		},
+		Attachments:   messageAttachments(newContent),
+		Body:          newContent.Body,
+		FormattedBody: optionalString(newContent.FormattedBody),
+		IsEdited:      &isEdited,
+		Msgtype:       string(newContent.MsgType),
 	})
 	return json.Marshal(rawMessageResp{EventID: resp.EventID.String(), RoomID: req.RoomID, Raw: resp})
 }
@@ -366,22 +373,20 @@ func (c *Core) handleFetchMessages(ctx context.Context, payload []byte) ([]byte,
 	if err != nil {
 		return nil, err
 	}
-	messages := make([]OutboundEvent, 0, len(resp.Chunk))
+	messages := make([]*tsMessageEvent, 0, len(resp.Chunk))
 	for _, evt := range resp.Chunk {
 		if evt != nil && evt.RoomID == "" {
 			evt.RoomID = id.RoomID(req.RoomID)
 		}
 		if converted := c.convertMaybeEncryptedMessageEvent(ctx, evt); converted != nil {
-			if converted["threadRootEventId"] != "" {
+			if converted.ThreadRootEventID != nil {
 				continue
 			}
 			messages = upsertMessage(messages, c.applyLatestReplacement(ctx, cli, id.RoomID(req.RoomID), converted))
 		}
 	}
 	sort.SliceStable(messages, func(i, j int) bool {
-		left, _ := messages[i]["originServerTs"].(int64)
-		right, _ := messages[j]["originServerTs"].(int64)
-		return left < right
+		return int64Value(messages[i].OriginServerTS) < int64Value(messages[j].OriginServerTS)
 	})
 	return json.Marshal(OutboundEvent{"messages": messages, "nextCursor": resp.End})
 }
@@ -404,7 +409,7 @@ func (c *Core) handleFetchThreadMessages(ctx context.Context, cli *mautrix.Clien
 	if err != nil {
 		return nil, err
 	}
-	messages := make([]OutboundEvent, 0, len(resp.Chunk)+1)
+	messages := make([]*tsMessageEvent, 0, len(resp.Chunk)+1)
 	if includeRoot {
 		root, err := retryMatrix(ctx, func() (*event.Event, error) {
 			return cli.GetEvent(ctx, id.RoomID(req.RoomID), id.EventID(req.ThreadRootEventID))
@@ -425,15 +430,13 @@ func (c *Core) handleFetchThreadMessages(ctx context.Context, cli *mautrix.Clien
 			evt.RoomID = id.RoomID(req.RoomID)
 		}
 		if converted := c.convertMaybeEncryptedMessageEvent(ctx, evt); converted != nil {
-			if converted["threadRootEventId"] == req.ThreadRootEventID {
+			if stringValue(converted.ThreadRootEventID) == req.ThreadRootEventID {
 				messages = upsertMessage(messages, c.applyLatestReplacement(ctx, cli, id.RoomID(req.RoomID), converted))
 			}
 		}
 	}
 	sort.SliceStable(messages, func(i, j int) bool {
-		left, _ := messages[i]["originServerTs"].(int64)
-		right, _ := messages[j]["originServerTs"].(int64)
-		return left < right
+		return int64Value(messages[i].OriginServerTS) < int64Value(messages[j].OriginServerTS)
 	})
 	nextCursor := resp.NextBatch
 	if dir == mautrix.DirectionForward {
@@ -442,18 +445,16 @@ func (c *Core) handleFetchThreadMessages(ctx context.Context, cli *mautrix.Clien
 	return json.Marshal(OutboundEvent{"messages": messages, "nextCursor": nextCursor})
 }
 
-func (c *Core) applyLatestReplacement(ctx context.Context, cli *mautrix.Client, roomID id.RoomID, msg OutboundEvent) OutboundEvent {
-	if msg == nil || msg["isEdited"] == true {
+func (c *Core) applyLatestReplacement(ctx context.Context, cli *mautrix.Client, roomID id.RoomID, msg *tsMessageEvent) *tsMessageEvent {
+	if msg == nil || boolValue(msg.IsEdited) {
 		return msg
 	}
-	eventID, _ := msg["eventId"].(string)
+	eventID := msg.EventID
 	if eventID == "" {
 		return msg
 	}
 	if cached := c.messageEdits[id.EventID(eventID)]; cached != nil {
-		if cached["threadRootEventId"] == "" && msg["threadRootEventId"] != "" {
-			cached["threadRootEventId"] = msg["threadRootEventId"]
-		}
+		cached.setThreadRoot(stringValue(msg.ThreadRootEventID))
 		return cached
 	}
 	resp, err := retryMatrix(ctx, func() (*mautrix.RespGetRelations, error) {
@@ -467,49 +468,44 @@ func (c *Core) applyLatestReplacement(ctx context.Context, cli *mautrix.Client, 
 	if err != nil {
 		return msg
 	}
-	var latest OutboundEvent
+	var latest *tsMessageEvent
 	for _, evt := range resp.Chunk {
 		if evt != nil && evt.RoomID == "" {
 			evt.RoomID = roomID
 		}
 		converted := c.convertMaybeEncryptedMessageEvent(ctx, evt)
-		if converted == nil || converted["eventId"] != eventID {
+		if converted == nil || converted.EventID != eventID {
 			continue
 		}
 		if latest == nil {
 			latest = converted
 			continue
 		}
-		left, _ := latest["originServerTs"].(int64)
-		right, _ := converted["originServerTs"].(int64)
-		if right > left {
+		if int64Value(converted.OriginServerTS) > int64Value(latest.OriginServerTS) {
 			latest = converted
 		}
 	}
 	if latest == nil {
 		return msg
 	}
-	if latest["threadRootEventId"] == "" && msg["threadRootEventId"] != "" {
-		latest["threadRootEventId"] = msg["threadRootEventId"]
-	}
+	latest.setThreadRoot(stringValue(msg.ThreadRootEventID))
 	return latest
 }
 
-func upsertMessage(messages []OutboundEvent, next OutboundEvent) []OutboundEvent {
+func upsertMessage(messages []*tsMessageEvent, next *tsMessageEvent) []*tsMessageEvent {
 	if next == nil {
 		return messages
 	}
-	eventID, _ := next["eventId"].(string)
+	eventID := next.EventID
 	if eventID == "" {
 		return append(messages, next)
 	}
 	for i, existing := range messages {
-		if existing["eventId"] != eventID {
+		if existing.EventID != eventID {
 			continue
 		}
-		existingTs, _ := existing["originServerTs"].(int64)
-		nextTs, _ := next["originServerTs"].(int64)
-		if next["isEdited"] == true || nextTs >= existingTs {
+		nextTs := int64Value(next.OriginServerTS)
+		if boolValue(next.IsEdited) || nextTs >= int64Value(existing.OriginServerTS) {
 			messages[i] = next
 		}
 		return messages
@@ -517,11 +513,11 @@ func upsertMessage(messages []OutboundEvent, next OutboundEvent) []OutboundEvent
 	return append(messages, next)
 }
 
-func (c *Core) rememberEdit(msg OutboundEvent) {
+func (c *Core) rememberEdit(msg *tsMessageEvent) {
 	if msg == nil {
 		return
 	}
-	eventID, _ := msg["eventId"].(string)
+	eventID := msg.EventID
 	if eventID == "" {
 		return
 	}
@@ -530,9 +526,7 @@ func (c *Core) rememberEdit(msg OutboundEvent) {
 		c.messageEdits[id.EventID(eventID)] = msg
 		return
 	}
-	existingTs, _ := existing["originServerTs"].(int64)
-	nextTs, _ := msg["originServerTs"].(int64)
-	if nextTs >= existingTs {
+	if int64Value(msg.OriginServerTS) >= int64Value(existing.OriginServerTS) {
 		c.messageEdits[id.EventID(eventID)] = msg
 	}
 }
@@ -557,7 +551,7 @@ func (c *Core) handleMarkRead(ctx context.Context, payload []byte) ([]byte, erro
 	return c.emptyIfNil(err)
 }
 
-func (c *Core) convertMessageEvent(evt *event.Event) OutboundEvent {
+func (c *Core) convertMessageEvent(evt *event.Event) *tsMessageEvent {
 	if evt == nil {
 		return nil
 	}
@@ -575,26 +569,30 @@ func (c *Core) convertMessageEvent(evt *event.Event) OutboundEvent {
 	if evt.Unsigned.Relations != nil && len(evt.Unsigned.Relations.Replaces.List) > 0 {
 		isEdited = true
 	}
-	return OutboundEvent{
-		"attachments":       messageAttachments(content),
-		"body":              content.Body,
-		"content":           evt.Content.Raw,
-		"eventId":           evt.ID.String(),
-		"formattedBody":     content.FormattedBody,
-		"isEncrypted":       evt.Mautrix.EventSource&event.SourceDecrypted != 0 || evt.Mautrix.WasEncrypted,
-		"isEdited":          isEdited,
-		"isMe":              evt.Sender == c.userID,
-		"msgtype":           string(content.MsgType),
-		"originServerTs":    evt.Timestamp,
-		"raw":               evt,
-		"roomId":            evt.RoomID.String(),
-		"sender":            evt.Sender.String(),
-		"threadRootEventId": threadRoot,
-		"type":              evt.Type.Type,
+	isMe := evt.Sender == c.userID
+	isEncrypted := evt.Mautrix.EventSource&event.SourceDecrypted != 0 || evt.Mautrix.WasEncrypted
+	return &tsMessageEvent{
+		tsRawEvent: tsRawEvent{
+			Content:        evt.Content.Raw,
+			EventID:        evt.ID.String(),
+			IsMe:           &isMe,
+			OriginServerTS: &evt.Timestamp,
+			Raw:            evt,
+			RoomID:         evt.RoomID.String(),
+			Sender:         evt.Sender.String(),
+			Type:           evt.Type.Type,
+		},
+		Attachments:       messageAttachments(content),
+		Body:              content.Body,
+		FormattedBody:     optionalString(content.FormattedBody),
+		IsEncrypted:       &isEncrypted,
+		IsEdited:          &isEdited,
+		Msgtype:           string(content.MsgType),
+		ThreadRootEventID: optionalString(threadRoot),
 	}
 }
 
-func (c *Core) convertEditEvent(evt *event.Event, content *event.MessageEventContent) OutboundEvent {
+func (c *Core) convertEditEvent(evt *event.Event, content *event.MessageEventContent) *tsMessageEvent {
 	if evt == nil || content == nil || content.NewContent == nil {
 		return nil
 	}
@@ -604,23 +602,27 @@ func (c *Core) convertEditEvent(evt *event.Event, content *event.MessageEventCon
 	if newContent.RelatesTo != nil {
 		threadRoot = newContent.RelatesTo.GetThreadParent().String()
 	}
-	converted := OutboundEvent{
-		"attachments":        messageAttachments(newContent),
-		"body":               newContent.Body,
-		"content":            evt.Content.Raw,
-		"eventId":            content.RelatesTo.GetReplaceID().String(),
-		"formattedBody":      newContent.FormattedBody,
-		"isEncrypted":        evt.Mautrix.EventSource&event.SourceDecrypted != 0 || evt.Mautrix.WasEncrypted,
-		"isEdited":           true,
-		"isMe":               evt.Sender == c.userID,
-		"msgtype":            string(newContent.MsgType),
-		"originServerTs":     evt.Timestamp,
-		"raw":                evt,
-		"replacementEventId": evt.ID.String(),
-		"roomId":             evt.RoomID.String(),
-		"sender":             evt.Sender.String(),
-		"threadRootEventId":  threadRoot,
-		"type":               evt.Type.Type,
+	isMe := evt.Sender == c.userID
+	isEncrypted := evt.Mautrix.EventSource&event.SourceDecrypted != 0 || evt.Mautrix.WasEncrypted
+	isEdited := true
+	converted := &tsMessageEvent{
+		tsRawEvent: tsRawEvent{
+			Content:        evt.Content.Raw,
+			EventID:        content.RelatesTo.GetReplaceID().String(),
+			IsMe:           &isMe,
+			OriginServerTS: &evt.Timestamp,
+			Raw:            evt,
+			RoomID:         evt.RoomID.String(),
+			Sender:         evt.Sender.String(),
+			Type:           evt.Type.Type,
+		},
+		Attachments:       messageAttachments(newContent),
+		Body:              newContent.Body,
+		FormattedBody:     optionalString(newContent.FormattedBody),
+		IsEncrypted:       &isEncrypted,
+		IsEdited:          &isEdited,
+		Msgtype:           string(newContent.MsgType),
+		ThreadRootEventID: optionalString(threadRoot),
 	}
 	c.rememberEdit(converted)
 	return converted

@@ -36,6 +36,7 @@ import type {
   MatrixSendMessageOptions,
   MatrixSendEphemeralEventOptions,
   MatrixSyncOnceOptions,
+  MatrixSyncStartOptions,
   MatrixTypingOptions,
   MatrixUploadMediaOptions,
   MatrixUploadEncryptedMediaResult,
@@ -216,6 +217,14 @@ export class MatrixWasmCore implements MatrixCore {
 
   async setTyping(options: MatrixTypingOptions): Promise<void> {
     await this.#call("set_typing", options);
+  }
+
+  async startSync(options: MatrixSyncStartOptions = {}): Promise<void> {
+    await this.#call("start_sync", options);
+  }
+
+  async stopSync(): Promise<void> {
+    await this.#call("stop_sync");
   }
 
   async syncOnce(options: MatrixSyncOnceOptions = {}): Promise<void> {

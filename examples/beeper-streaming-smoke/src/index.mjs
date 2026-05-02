@@ -112,7 +112,7 @@ async function main() {
     initialSync: readInitialSyncMode(),
     since: process.env.MATRIX_INITIAL_SYNC_SINCE,
     inviteAutoJoin: { inviterAllowlist: [inviteUserId] },
-    polling: { timeoutMs: 10_000 },
+    sync: { timeoutMs: 10_000 },
     recoveryKey: process.env.MATRIX_RECOVERY_KEY,
     token: login.accessToken,
     userId: process.env.MATRIX_USER_ID || login.userId,

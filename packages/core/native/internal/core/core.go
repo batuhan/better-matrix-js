@@ -27,7 +27,7 @@ type Core struct {
 	pickleKey          []byte
 	pendingDecryptions []pendingDecryption
 	skipNextSync       bool
-	messageEdits       map[id.EventID]OutboundEvent
+	messageEdits       map[id.EventID]*tsMessageEvent
 	reactions          map[id.EventID]reactionSnapshot
 	stores             *storeBundle
 	userID             id.UserID
@@ -35,6 +35,9 @@ type Core struct {
 	cryptoStatus       string
 	mu                 sync.Mutex
 	syncMu             sync.Mutex
+	syncLoopMu         sync.Mutex
+	syncLoopCancel     context.CancelFunc
+	syncLoopDone       chan struct{}
 }
 
 type OutboundEvent map[string]any
@@ -47,7 +50,7 @@ func New(emit func(OutboundEvent), host ...RuntimeHost) *Core {
 	return &Core{
 		emit:         emit,
 		host:         runtimeHost,
-		messageEdits: make(map[id.EventID]OutboundEvent),
+		messageEdits: make(map[id.EventID]*tsMessageEvent),
 		reactions:    make(map[id.EventID]reactionSnapshot),
 	}
 }
@@ -55,6 +58,12 @@ func New(emit func(OutboundEvent), host ...RuntimeHost) *Core {
 func (c *Core) Handle(ctx context.Context, op string, payload []byte) ([]byte, error) {
 	if op == "sync_once" {
 		return c.handleSyncOnce(ctx, payload)
+	}
+	if op == "start_sync" {
+		return c.handleStartSync(payload)
+	}
+	if op == "stop_sync" {
+		return c.handleStopSync()
 	}
 
 	c.mu.Lock()
@@ -136,6 +145,9 @@ func (c *Core) requireClient() (*mautrix.Client, error) {
 }
 
 func (c *Core) handleClose() ([]byte, error) {
+	if _, err := c.handleStopSync(); err != nil {
+		return nil, err
+	}
 	var err error
 	if c.crypto != nil {
 		err = c.crypto.Close()
@@ -152,7 +164,7 @@ func (c *Core) handleClose() ([]byte, error) {
 	c.nextBatch = ""
 	c.pendingDecryptions = nil
 	c.skipNextSync = false
-	c.messageEdits = make(map[id.EventID]OutboundEvent)
+	c.messageEdits = make(map[id.EventID]*tsMessageEvent)
 	c.reactions = make(map[id.EventID]reactionSnapshot)
 	c.stores = nil
 	c.userID = ""

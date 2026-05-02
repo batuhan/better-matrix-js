@@ -1,4 +1,3 @@
-import { startMatrixPolling, type MatrixPollingHandle } from "./polling";
 import { base64ToBytes, bytesToBase64 } from "./bytes";
 import { stripUndefined } from "./object";
 import type {
@@ -148,7 +147,7 @@ class DefaultMatrixClient implements MatrixClient {
   #core: MatrixCore | null = null;
   #listeners = new Set<(event: MatrixClientEvent) => void>();
   #options: MatrixClientOptions;
-  #polling: MatrixPollingHandle | null = null;
+  #syncAbort: (() => void) | null = null;
   #unsubscribeCore: (() => void) | null = null;
 
   constructor(options: MatrixClientOptions) {
@@ -292,12 +291,20 @@ class DefaultMatrixClient implements MatrixClient {
       applyResponse: (opts) => this.#coreRequired().applySyncResponse(opts),
       once: (opts) => this.#coreRequired().syncOnce(opts),
       start: async (opts = {}) => {
-        if (this.#polling) return;
-        this.#polling = startMatrixPolling(this.#coreRequired(), opts);
+        if (this.#syncAbort) return;
+        if (opts.signal?.aborted) return;
+        await this.#coreRequired().startSync(stripUndefined({
+          retryDelayMs: opts.retryDelayMs,
+          timeoutMs: opts.timeoutMs,
+        }));
+        const abort = () => void this.sync.stop();
+        opts.signal?.addEventListener("abort", abort, { once: true });
+        this.#syncAbort = () => opts.signal?.removeEventListener("abort", abort);
       },
       stop: async () => {
-        await this.#polling?.stop();
-        this.#polling = null;
+        this.#syncAbort?.();
+        this.#syncAbort = null;
+        await this.#core?.stopSync();
       },
     };
     this.typing = {

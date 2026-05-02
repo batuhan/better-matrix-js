@@ -139,15 +139,15 @@ export class MatrixAdapter {
     this.#userId = whoami.userId;
     this.botUserId = whoami.userId;
 
-    if (this.#config.polling?.enabled !== false) {
-      const pollingOptions = {};
-      if (this.#config.polling?.retryDelayMs !== undefined) {
-        Object.assign(pollingOptions, { retryDelayMs: this.#config.polling.retryDelayMs });
+    if (this.#config.sync?.enabled !== false) {
+      const syncOptions = {};
+      if (this.#config.sync?.retryDelayMs !== undefined) {
+        Object.assign(syncOptions, { retryDelayMs: this.#config.sync.retryDelayMs });
       }
-      if (this.#config.polling?.timeoutMs !== undefined) {
-        Object.assign(pollingOptions, { timeoutMs: this.#config.polling.timeoutMs });
+      if (this.#config.sync?.timeoutMs !== undefined) {
+        Object.assign(syncOptions, { timeoutMs: this.#config.sync.timeoutMs });
       }
-      await this.#client.sync.start(pollingOptions);
+      await this.#client.sync.start(syncOptions);
     }
   }
 
