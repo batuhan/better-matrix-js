@@ -60,6 +60,7 @@ declare global {
 
 const listenersByCore = new Map<string, Set<(event: MatrixCoreEvent) => void>>();
 let runtimeBoot: Promise<void> | null = null;
+let emitDispatcherInstalled = false;
 
 export interface LoadMatrixCoreOptions {
   go?: GoRuntime;
@@ -283,6 +284,10 @@ async function waitForCoreFactory(): Promise<void> {
 }
 
 function installEmitDispatcher(): void {
+  if (emitDispatcherInstalled) {
+    return;
+  }
+  emitDispatcherInstalled = true;
   globalThis.__matrixCoreEmit = (coreId: string, payload: string) => {
     const listeners = listenersByCore.get(coreId);
     if (!listeners) {

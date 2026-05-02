@@ -649,28 +649,14 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixRawMess
       roomId: event.roomId,
       sender: event.sender,
       type: event.type,
+      ...(event.attachments !== undefined && { attachments: event.attachments }),
+      ...(event.formattedBody !== undefined && { formattedBody: event.formattedBody }),
+      ...(event.isEdited !== undefined && { isEdited: event.isEdited }),
+      ...(event.isEncrypted !== undefined && { isEncrypted: event.isEncrypted }),
+      ...(event.isMe !== undefined && { isMe: event.isMe }),
+      ...(event.originServerTs !== undefined && { originServerTs: event.originServerTs }),
+      ...(event.threadRootEventId !== undefined && { threadRootEventId: event.threadRootEventId }),
     };
-    if (event.attachments !== undefined) {
-      raw.attachments = event.attachments;
-    }
-    if (event.formattedBody !== undefined) {
-      raw.formattedBody = event.formattedBody;
-    }
-    if (event.isEdited !== undefined) {
-      raw.isEdited = event.isEdited;
-    }
-    if (event.isEncrypted !== undefined) {
-      raw.isEncrypted = event.isEncrypted;
-    }
-    if (event.isMe !== undefined) {
-      raw.isMe = event.isMe;
-    }
-    if (event.originServerTs !== undefined) {
-      raw.originServerTs = event.originServerTs;
-    }
-    if (event.threadRootEventId !== undefined) {
-      raw.threadRootEventId = event.threadRootEventId;
-    }
     return this.parseMessage(raw, overrideThreadId);
   }
 
@@ -804,7 +790,7 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixRawMess
   #matrixAttachmentsFromContent(raw: MatrixRawMessage): MatrixMediaAttachment[] {
     const content = raw.content;
     const msgtype = normalizeMatrixMsgtype(raw.msgtype ?? readString(content, "msgtype"));
-    if (!msgtype || !isMatrixMediaMsgtype(msgtype)) {
+    if (!msgtype) {
       return [];
     }
     const infoRecord = readRecord(content, "info");
@@ -1075,12 +1061,6 @@ function normalizeMatrixMsgtype(value?: string): MatrixMediaAttachment["msgtype"
     return value;
   }
   return null;
-}
-
-function isMatrixMediaMsgtype(
-  value: MatrixMediaAttachment["msgtype"] | null
-): value is MatrixMediaAttachment["msgtype"] {
-  return value !== null;
 }
 
 function matrixMediaInfoFromRecord(record: Record<string, unknown>): MatrixMediaAttachment["info"] {

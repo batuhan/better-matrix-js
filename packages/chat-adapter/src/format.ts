@@ -31,7 +31,7 @@ export class MatrixFormatConverter extends BaseFormatConverter {
   }
 
   htmlToMarkdown(html: string): string {
-    const root = parseHTML(stripReplyFallbackFromHTML(html));
+    const root = parseHTML(html);
     return normalizeMarkdownSpacing(renderHTMLNodesToMarkdown(root.childNodes));
   }
 
@@ -215,16 +215,6 @@ function parseMatrixToUserId(href: string): string | null {
   }
   const identifier = decodeURIComponent(firstSegment);
   return identifier.startsWith("@") ? identifier : null;
-}
-
-function stripReplyFallbackFromHTML(html: string): string {
-  const root = parseHTML(html);
-  for (const child of [...root.childNodes]) {
-    if (child instanceof HTMLElement && child.tagName.toLowerCase() === "mx-reply") {
-      child.remove();
-    }
-  }
-  return root.toString();
 }
 
 function normalizeMarkdownSpacing(markdown: string): string {

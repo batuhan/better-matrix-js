@@ -171,7 +171,11 @@ export class MatrixSyncDurableObject {
       return Response.json({ error: "Method not allowed" }, { status: 405 });
     }
 
-    if (url.pathname.endsWith("/start")) {
+    if (
+      url.pathname.endsWith("/start") ||
+      url.pathname.endsWith("/sync") ||
+      url.pathname.endsWith("/wake")
+    ) {
       await this.#setEnabled(true);
       const status = await this.#sync();
       return Response.json({ ok: true, status });
@@ -181,12 +185,6 @@ export class MatrixSyncDurableObject {
       await this.#setEnabled(false);
       await this.#state.storage.deleteAlarm?.();
       return Response.json({ ok: true, status: await this.status() });
-    }
-
-    if (url.pathname.endsWith("/sync") || url.pathname.endsWith("/wake")) {
-      await this.#setEnabled(true);
-      const status = await this.#sync();
-      return Response.json({ ok: true, status });
     }
 
     return Response.json({ error: "Not found" }, { status: 404 });
@@ -229,11 +227,11 @@ export class MatrixSyncDurableObject {
       const response = await this.#fetchSync(previousSince);
       await this.#postWebhook(response, previousSince);
       const nextBatch = syncNextBatch(response);
-      if (nextBatch) {
-        await this.#state.storage.put(this.#key("since"), nextBatch);
-      }
-      await this.#state.storage.delete(this.#key("last-error"));
-      await this.#state.storage.put(this.#key("retry-ms"), 0);
+      await Promise.all([
+        nextBatch ? this.#state.storage.put(this.#key("since"), nextBatch) : undefined,
+        this.#state.storage.delete(this.#key("last-error")),
+        this.#state.storage.put(this.#key("retry-ms"), 0),
+      ]);
       await this.#scheduleNextSuccess();
     } catch (error) {
       await this.#state.storage.put(this.#key("last-error"), errorMessage(error));
