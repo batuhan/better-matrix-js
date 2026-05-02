@@ -15,30 +15,34 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
+// ts:export MatrixSendMessageOptions
 type sendReq struct {
 	RoomID            string        `json:"roomId"`
 	Body              string        `json:"body"`
 	Content           OutboundEvent `json:"content,omitempty"`
 	FormattedBody     string        `json:"formattedBody,omitempty"`
 	Mentions          *mentionsReq  `json:"mentions,omitempty"`
-	MsgType           string        `json:"msgtype,omitempty"`
+	MsgType           string        `json:"msgtype,omitempty" ts:"\"m.text\" | \"m.notice\" | \"m.emote\""`
 	ThreadRootEventID string        `json:"threadRootEventId,omitempty"`
 	ReplyToEventID    string        `json:"replyToEventId,omitempty"`
 }
 
+// ts:export MatrixMentions
 type mentionsReq struct {
 	Room    bool     `json:"room,omitempty"`
 	UserIDs []string `json:"userIds,omitempty"`
 }
 
+// ts:export MatrixRawMessage
 type rawMessageResp struct {
 	EventID string `json:"eventId"`
 	RoomID  string `json:"roomId"`
 	Raw     any    `json:"raw"`
 }
 
+// ts:export MatrixCreateBeeperStreamResult
 type streamDescriptorResp struct {
-	Descriptor any `json:"descriptor"`
+	Descriptor any `json:"descriptor" ts:"Record<string, unknown>"`
 }
 
 func (c *Core) handlePostMessage(ctx context.Context, payload []byte) ([]byte, error) {
@@ -68,9 +72,10 @@ func (c *Core) handlePostMessage(ctx context.Context, payload []byte) ([]byte, e
 	return json.Marshal(rawMessageResp{EventID: resp.EventID.String(), RoomID: req.RoomID, Raw: resp})
 }
 
+// ts:export MatrixCreateBeeperStreamOptions
 type createBeeperStreamReq struct {
 	RoomID     string `json:"roomId"`
-	StreamType string `json:"streamType"`
+	StreamType string `json:"streamType,omitempty"`
 }
 
 func (c *Core) handleCreateBeeperStream(ctx context.Context, payload []byte) ([]byte, error) {
@@ -91,14 +96,16 @@ func (c *Core) handleCreateBeeperStream(ctx context.Context, payload []byte) ([]
 	return json.Marshal(streamDescriptorResp{Descriptor: descriptor})
 }
 
+// ts:export MatrixBeeperStreamOptions
 type beeperStreamReq struct {
 	Content map[string]any `json:"content,omitempty"`
 	EventID string         `json:"eventId"`
 	RoomID  string         `json:"roomId"`
 }
 
+// ts:export MatrixRegisterBeeperStreamOptions
 type registerBeeperStreamReq struct {
-	Descriptor json.RawMessage `json:"descriptor"`
+	Descriptor json.RawMessage `json:"descriptor" ts:"Record<string, unknown>"`
 	EventID    string          `json:"eventId"`
 	RoomID     string          `json:"roomId"`
 }
@@ -151,6 +158,7 @@ func (c *Core) handleUnsubscribeBeeperStream(payload []byte) ([]byte, error) {
 	return c.empty()
 }
 
+// ts:export MatrixEditMessageOptions
 type editReq struct {
 	RoomID        string        `json:"roomId"`
 	MessageID     string        `json:"messageId"`
@@ -158,7 +166,7 @@ type editReq struct {
 	Content       OutboundEvent `json:"content,omitempty"`
 	FormattedBody string        `json:"formattedBody,omitempty"`
 	Mentions      *mentionsReq  `json:"mentions,omitempty"`
-	MsgType       string        `json:"msgtype,omitempty"`
+	MsgType       string        `json:"msgtype,omitempty" ts:"\"m.text\" | \"m.notice\" | \"m.emote\""`
 }
 
 func (c *Core) handleEditMessage(ctx context.Context, payload []byte) ([]byte, error) {
@@ -208,6 +216,7 @@ func (c *Core) handleEditMessage(ctx context.Context, payload []byte) ([]byte, e
 	return json.Marshal(rawMessageResp{EventID: resp.EventID.String(), RoomID: req.RoomID, Raw: resp})
 }
 
+// ts:export MatrixSendEphemeralEventOptions
 type ephemeralEventReq struct {
 	Content       OutboundEvent `json:"content"`
 	EventType     string        `json:"eventType"`
@@ -259,6 +268,7 @@ func beeperSendEphemeralEvent(ctx context.Context, cli *mautrix.Client, roomID i
 	return resp, err
 }
 
+// ts:export MatrixDeleteMessageOptions
 type deleteReq struct {
 	RoomID    string `json:"roomId"`
 	MessageID string `json:"messageId"`
@@ -284,6 +294,7 @@ func (c *Core) handleDeleteMessage(ctx context.Context, payload []byte) ([]byte,
 	return c.empty()
 }
 
+// ts:export MatrixTypingOptions
 type typingReq struct {
 	RoomID    string `json:"roomId"`
 	Typing    bool   `json:"typing"`
@@ -309,6 +320,7 @@ func (c *Core) handleSetTyping(ctx context.Context, payload []byte) ([]byte, err
 	return c.empty()
 }
 
+// ts:export MatrixFetchMessageOptions
 type fetchMessageReq struct {
 	RoomID    string `json:"roomId"`
 	MessageID string `json:"messageId"`
@@ -340,10 +352,11 @@ func (c *Core) handleFetchMessage(ctx context.Context, payload []byte) ([]byte, 
 	return json.Marshal(OutboundEvent{"message": converted})
 }
 
+// ts:export MatrixFetchMessagesOptions
 type fetchMessagesReq struct {
 	RoomID            string `json:"roomId"`
 	Cursor            string `json:"cursor,omitempty"`
-	Direction         string `json:"direction,omitempty"`
+	Direction         string `json:"direction,omitempty" ts:"\"backward\" | \"forward\""`
 	Limit             int    `json:"limit,omitempty"`
 	ThreadRootEventID string `json:"threadRootEventId,omitempty"`
 }
@@ -531,6 +544,7 @@ func (c *Core) rememberEdit(msg *tsMessageEvent) {
 	}
 }
 
+// ts:export MatrixMarkReadOptions
 type markReadReq struct {
 	EventID string `json:"eventId"`
 	RoomID  string `json:"roomId"`

@@ -8,6 +8,7 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
+// ts:export MatrixGetUserOptions
 type getUserReq struct {
 	UserID string `json:"userId"`
 }

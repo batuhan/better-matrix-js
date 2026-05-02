@@ -18,6 +18,7 @@ type reactionSnapshot struct {
 	Raw              any
 }
 
+// ts:export MatrixReactionOptions
 type reactionReq struct {
 	RoomID    string `json:"roomId"`
 	MessageID string `json:"messageId"`

@@ -1,45 +1,104 @@
 import type {
+  MatrixApplySyncResponseOptions,
+  MatrixBeeperStreamOptions,
+  MatrixCoreInitOptions,
+  MatrixCreateBeeperStreamOptions,
+  MatrixCreateBeeperStreamResult,
+  MatrixDeleteMessageOptions,
+  MatrixDownloadEncryptedMediaOptions,
+  MatrixDownloadMediaOptions,
+  MatrixDownloadMediaResult,
+  MatrixEditMessageOptions,
+  MatrixFetchMessageOptions,
+  MatrixFetchMessageResult,
+  MatrixFetchMessagesOptions,
+  MatrixFetchMessagesResult,
+  MatrixFetchRoomOptions,
+  MatrixGetUserOptions,
   MatrixInviteEvent,
-  MatrixEncryptedFile,
-  MatrixMediaAttachment,
-  MatrixMediaInfo,
-  MatrixMentions,
+  MatrixInviteUserOptions,
+  MatrixJoinRoomOptions,
+  MatrixJoinRoomResult,
+  MatrixJoinedRoomsResult,
+  MatrixLeaveRoomOptions,
+  MatrixListRoomThreadsOptions,
+  MatrixListRoomThreadsResult,
+  MatrixMarkReadOptions,
   MatrixMessageEvent,
+  MatrixOpenDMOptions,
+  MatrixOpenDMResult,
   MatrixRawEvent,
+  MatrixRawMessage,
   MatrixReactionEvent,
-  MatrixRoomThreadSummary,
+  MatrixReactionOptions,
+  MatrixRegisterBeeperStreamOptions,
+  MatrixRoomInfo,
+  MatrixSendEphemeralEventOptions,
+  MatrixSendMediaMessageOptions,
+  MatrixSendMessageOptions,
+  MatrixSyncOnceOptions,
+  MatrixSyncStartOptions,
+  MatrixTypingOptions,
+  MatrixUploadEncryptedMediaResult,
+  MatrixUploadMediaOptions,
+  MatrixUploadMediaResult,
+  MatrixUserInfo,
+  MatrixWhoami,
 } from "./generated-runtime-types";
 
 export type {
+  MatrixApplySyncResponseOptions,
+  MatrixBeeperStreamOptions,
+  MatrixCoreInitOptions,
+  MatrixCreateBeeperStreamOptions,
+  MatrixCreateBeeperStreamResult,
+  MatrixDeleteMessageOptions,
+  MatrixDownloadEncryptedMediaOptions,
+  MatrixDownloadMediaOptions,
+  MatrixDownloadMediaResult,
+  MatrixEditMessageOptions,
   MatrixEncryptedFile,
+  MatrixEncryptedFileKey,
+  MatrixFetchMessageOptions,
+  MatrixFetchMessageResult,
+  MatrixFetchMessagesOptions,
+  MatrixFetchMessagesResult,
+  MatrixFetchRoomOptions,
+  MatrixGetUserOptions,
   MatrixInviteEvent,
+  MatrixInviteUserOptions,
+  MatrixJoinRoomOptions,
+  MatrixJoinRoomResult,
+  MatrixJoinedRoomsResult,
+  MatrixLeaveRoomOptions,
+  MatrixListRoomThreadsOptions,
+  MatrixListRoomThreadsResult,
+  MatrixMarkReadOptions,
   MatrixMediaAttachment,
   MatrixMediaInfo,
   MatrixMentions,
   MatrixMessageEvent,
+  MatrixOpenDMOptions,
+  MatrixOpenDMResult,
   MatrixRawEvent,
+  MatrixRawMessage,
   MatrixReactionEvent,
+  MatrixReactionOptions,
+  MatrixRegisterBeeperStreamOptions,
+  MatrixRoomInfo,
   MatrixRoomThreadSummary,
+  MatrixSendEphemeralEventOptions,
+  MatrixSendMediaMessageOptions,
+  MatrixSendMessageOptions,
+  MatrixSyncOnceOptions,
+  MatrixSyncStartOptions,
+  MatrixTypingOptions,
+  MatrixUploadEncryptedMediaResult,
+  MatrixUploadMediaOptions,
+  MatrixUploadMediaResult,
+  MatrixUserInfo,
+  MatrixWhoami,
 } from "./generated-runtime-types";
-
-export interface MatrixCoreInitOptions {
-  accessToken: string;
-  catchUpOnStart?: boolean;
-  deviceId?: string;
-  homeserverUrl: string;
-  initialSyncMode?: "persisted" | "latest" | "catch_up";
-  initialSyncSince?: string;
-  pickleKey?: string;
-  recoveryCode?: string;
-  recoveryKey?: string;
-  userId?: string;
-  verifyRecoveryOnStart?: boolean;
-}
-
-export interface MatrixWhoami {
-  deviceId: string;
-  userId: string;
-}
 
 export type MatrixCoreEvent =
   | { event: MatrixMessageEvent; type: "message" }
@@ -84,231 +143,6 @@ export type MatrixCoreEvent =
       step?: string;
       type: "sync_status";
     };
-
-export interface MatrixSendMessageOptions {
-  body: string;
-  content?: Record<string, unknown>;
-  formattedBody?: string;
-  mentions?: MatrixMentions;
-  msgtype?: "m.text" | "m.notice" | "m.emote";
-  replyToEventId?: string;
-  roomId: string;
-  threadRootEventId?: string;
-}
-
-export interface MatrixEditMessageOptions {
-  body: string;
-  content?: Record<string, unknown>;
-  formattedBody?: string;
-  mentions?: MatrixMentions;
-  messageId: string;
-  msgtype?: "m.text" | "m.notice" | "m.emote";
-  roomId: string;
-}
-
-export interface MatrixDeleteMessageOptions {
-  messageId: string;
-  reason?: string;
-  roomId: string;
-}
-
-export interface MatrixReactionOptions {
-  emoji: string;
-  messageId: string;
-  roomId: string;
-}
-
-export interface MatrixTypingOptions {
-  roomId: string;
-  timeoutMs?: number;
-  typing: boolean;
-}
-
-export interface MatrixFetchMessagesOptions {
-  cursor?: string;
-  direction?: "backward" | "forward";
-  limit?: number;
-  roomId: string;
-  threadRootEventId?: string;
-}
-
-export interface MatrixFetchMessagesResult {
-  messages: MatrixMessageEvent[];
-  nextCursor?: string;
-}
-
-export interface MatrixFetchMessageOptions {
-  messageId: string;
-  roomId: string;
-}
-
-export interface MatrixFetchMessageResult {
-  message: MatrixMessageEvent | null;
-}
-
-export interface MatrixMarkReadOptions {
-  eventId: string;
-  roomId: string;
-}
-
-export interface MatrixUploadMediaOptions {
-  bytesBase64: string;
-  contentType?: string;
-  filename?: string;
-}
-
-export interface MatrixUploadMediaResult {
-  contentUri: string;
-  raw: unknown;
-}
-
-export interface MatrixDownloadMediaOptions {
-  contentUri: string;
-}
-
-export interface MatrixDownloadMediaResult {
-  bytesBase64: string;
-}
-
-export interface MatrixUploadEncryptedMediaResult {
-  contentUri: string;
-  file: MatrixEncryptedFile;
-  raw: unknown;
-}
-
-export interface MatrixDownloadEncryptedMediaOptions {
-  file: MatrixEncryptedFile;
-}
-
-export interface MatrixRoomInfo {
-  encrypted: boolean;
-  id: string;
-  isDM?: boolean;
-  joinRule?: string;
-  memberCount?: number;
-  name?: string;
-  raw?: Record<string, unknown>;
-  topic?: string;
-  visibility?: "private" | "workspace" | "external" | "unknown";
-}
-
-export interface MatrixFetchRoomOptions {
-  roomId: string;
-}
-
-export interface MatrixOpenDMOptions {
-  userId: string;
-}
-
-export interface MatrixOpenDMResult {
-  raw: unknown;
-  roomId: string;
-}
-
-export interface MatrixGetUserOptions {
-  userId: string;
-}
-
-export interface MatrixUserInfo {
-  avatarUrl?: string;
-  displayName?: string;
-  raw: unknown;
-  userId: string;
-}
-
-export interface MatrixJoinRoomOptions {
-  roomIdOrAlias: string;
-}
-
-export interface MatrixJoinRoomResult {
-  raw: unknown;
-  roomId: string;
-}
-
-export interface MatrixLeaveRoomOptions {
-  reason?: string;
-  roomId: string;
-}
-
-export interface MatrixInviteUserOptions {
-  reason?: string;
-  roomId: string;
-  userId: string;
-}
-
-export interface MatrixJoinedRoomsResult {
-  raw: unknown;
-  roomIds: string[];
-}
-
-export interface MatrixRawMessage {
-  eventId: string;
-  raw: unknown;
-  roomId: string;
-}
-
-export interface MatrixSendMediaMessageOptions extends MatrixMediaInfo {
-  body?: string;
-  bytesBase64: string;
-  contentType?: string;
-  filename?: string;
-  msgtype?: "m.image" | "m.video" | "m.audio" | "m.file";
-  roomId: string;
-  threadRootEventId?: string;
-}
-
-export interface MatrixListRoomThreadsOptions {
-  cursor?: string;
-  limit?: number;
-  roomId: string;
-}
-
-export interface MatrixListRoomThreadsResult {
-  nextCursor?: string;
-  threads: MatrixRoomThreadSummary[];
-}
-
-export interface MatrixSyncOnceOptions {
-  timeoutMs?: number;
-}
-
-export interface MatrixSyncStartOptions {
-  retryDelayMs?: number;
-  timeoutMs?: number;
-}
-
-export interface MatrixApplySyncResponseOptions {
-  response: unknown;
-  since?: string;
-}
-
-export interface MatrixSendEphemeralEventOptions {
-  content: Record<string, unknown>;
-  eventType: string;
-  roomId: string;
-  transactionId?: string;
-}
-
-export interface MatrixCreateBeeperStreamOptions {
-  roomId: string;
-  streamType?: string;
-}
-
-export interface MatrixCreateBeeperStreamResult {
-  descriptor: Record<string, unknown>;
-}
-
-export interface MatrixRegisterBeeperStreamOptions {
-  descriptor: Record<string, unknown>;
-  eventId: string;
-  roomId: string;
-}
-
-export interface MatrixBeeperStreamOptions {
-  content?: Record<string, unknown>;
-  eventId: string;
-  roomId: string;
-}
 
 export interface MatrixCore {
   addReaction(options: MatrixReactionOptions): Promise<MatrixRawMessage>;

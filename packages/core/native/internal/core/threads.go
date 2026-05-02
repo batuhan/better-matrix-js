@@ -11,6 +11,7 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
+// ts:export MatrixListRoomThreadsOptions
 type listRoomThreadsReq struct {
 	Cursor string `json:"cursor,omitempty"`
 	Limit  int    `json:"limit,omitempty"`

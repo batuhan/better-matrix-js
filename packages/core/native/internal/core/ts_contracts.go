@@ -12,12 +12,6 @@ type tsRawEvent struct {
 	Type           string         `json:"type"`
 }
 
-// ts:export MatrixMentions
-type tsMentions struct {
-	Room    *bool    `json:"room,omitempty"`
-	UserIDs []string `json:"userIds,omitempty"`
-}
-
 // ts:export MatrixMediaInfo
 type tsMediaInfo struct {
 	ContentType *string `json:"contentType,omitempty"`
@@ -27,31 +21,13 @@ type tsMediaInfo struct {
 	Width       *int    `json:"width,omitempty"`
 }
 
-// ts:export MatrixEncryptedFileKey
-type tsEncryptedFileKey struct {
-	Alg    string   `json:"alg" ts:"\"A256CTR\""`
-	Ext    bool     `json:"ext" ts:"true"`
-	K      string   `json:"k"`
-	KeyOps []string `json:"key_ops" ts:"[\"encrypt\", \"decrypt\"]"`
-	Kty    string   `json:"kty" ts:"\"oct\""`
-}
-
-// ts:export MatrixEncryptedFile
-type tsEncryptedFile struct {
-	Hashes map[string]string   `json:"hashes" ts:"{ sha256: string }"`
-	IV     string              `json:"iv"`
-	Key    tsEncryptedFileKey  `json:"key"`
-	URL    string              `json:"url"`
-	V      string              `json:"v" ts:"\"v2\""`
-}
-
 // ts:export MatrixMediaAttachment
 type tsMediaAttachment struct {
-	ContentURI    *string          `json:"contentUri,omitempty"`
-	EncryptedFile *tsEncryptedFile `json:"encryptedFile,omitempty"`
-	Filename      *string          `json:"filename,omitempty"`
-	Info          *tsMediaInfo     `json:"info,omitempty"`
-	Msgtype       string           `json:"msgtype" ts:"\"m.image\" | \"m.video\" | \"m.audio\" | \"m.file\""`
+	ContentURI    *string        `json:"contentUri,omitempty"`
+	EncryptedFile *encryptedFile `json:"encryptedFile,omitempty" ts:"MatrixEncryptedFile"`
+	Filename      *string        `json:"filename,omitempty"`
+	Info          *tsMediaInfo   `json:"info,omitempty"`
+	Msgtype       string         `json:"msgtype" ts:"\"m.image\" | \"m.video\" | \"m.audio\" | \"m.file\""`
 }
 
 // ts:export MatrixMessageEvent
@@ -100,9 +76,9 @@ func int64Value(value *int64) int64 {
 // ts:export MatrixReactionEvent
 type tsReactionEvent struct {
 	tsRawEvent
-	Added            *bool   `json:"added,omitempty"`
-	Key              string  `json:"key"`
-	RelatesToEventID string  `json:"relatesToEventId"`
+	Added            *bool  `json:"added,omitempty"`
+	Key              string `json:"key"`
+	RelatesToEventID string `json:"relatesToEventId"`
 }
 
 // ts:export MatrixInviteEvent
@@ -117,4 +93,65 @@ type tsRoomThreadSummary struct {
 	LastReplyTS *int64         `json:"lastReplyTs,omitempty"`
 	ReplyCount  *int           `json:"replyCount,omitempty"`
 	Root        tsMessageEvent `json:"root"`
+}
+
+// ts:export MatrixFetchMessagesResult
+type tsFetchMessagesResult struct {
+	Messages   []tsMessageEvent `json:"messages"`
+	NextCursor *string          `json:"nextCursor,omitempty"`
+}
+
+// ts:export MatrixFetchMessageResult
+type tsFetchMessageResult struct {
+	Message *tsMessageEvent `json:"message" ts:"MatrixMessageEvent | null"`
+}
+
+// ts:export MatrixUploadMediaResult
+type tsUploadMediaResult struct {
+	ContentURI string `json:"contentUri"`
+	Raw        any    `json:"raw"`
+}
+
+// ts:export MatrixDownloadMediaResult
+type tsDownloadMediaResult struct {
+	BytesBase64 string `json:"bytesBase64"`
+}
+
+// ts:export MatrixUploadEncryptedMediaResult
+type tsUploadEncryptedMediaResult struct {
+	ContentURI string        `json:"contentUri"`
+	File       encryptedFile `json:"file" ts:"MatrixEncryptedFile"`
+	Raw        any           `json:"raw"`
+}
+
+// ts:export MatrixOpenDMResult
+type tsOpenDMResult struct {
+	Raw    any    `json:"raw"`
+	RoomID string `json:"roomId"`
+}
+
+// ts:export MatrixJoinRoomResult
+type tsJoinRoomResult struct {
+	Raw    any    `json:"raw"`
+	RoomID string `json:"roomId"`
+}
+
+// ts:export MatrixJoinedRoomsResult
+type tsJoinedRoomsResult struct {
+	Raw     any      `json:"raw"`
+	RoomIDs []string `json:"roomIds"`
+}
+
+// ts:export MatrixUserInfo
+type tsUserInfo struct {
+	AvatarURL   *string `json:"avatarUrl,omitempty"`
+	DisplayName *string `json:"displayName,omitempty"`
+	Raw         any     `json:"raw"`
+	UserID      string  `json:"userId"`
+}
+
+// ts:export MatrixListRoomThreadsResult
+type tsListRoomThreadsResult struct {
+	NextCursor *string               `json:"nextCursor,omitempty"`
+	Threads    []tsRoomThreadSummary `json:"threads"`
 }

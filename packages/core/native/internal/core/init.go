@@ -17,12 +17,13 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
+// ts:export MatrixCoreInitOptions
 type initReq struct {
 	AccessToken           string `json:"accessToken"`
 	CatchUpOnStart        *bool  `json:"catchUpOnStart,omitempty"`
 	DeviceID              string `json:"deviceId,omitempty"`
 	HomeserverURL         string `json:"homeserverUrl"`
-	InitialSyncMode       string `json:"initialSyncMode,omitempty"`
+	InitialSyncMode       string `json:"initialSyncMode,omitempty" ts:"\"persisted\" | \"latest\" | \"catch_up\""`
 	InitialSyncSince      string `json:"initialSyncSince,omitempty"`
 	PickleKey             string `json:"pickleKey,omitempty"`
 	RecoveryCode          string `json:"recoveryCode,omitempty"`
@@ -31,6 +32,7 @@ type initReq struct {
 	VerifyRecoveryOnStart bool   `json:"verifyRecoveryOnStart,omitempty"`
 }
 
+// ts:export MatrixWhoami
 type whoamiResp struct {
 	UserID   string `json:"userId"`
 	DeviceID string `json:"deviceId"`

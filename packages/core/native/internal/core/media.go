@@ -17,12 +17,14 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
+// ts:export MatrixUploadMediaOptions
 type uploadMediaReq struct {
 	BytesBase64 string `json:"bytesBase64"`
 	ContentType string `json:"contentType,omitempty"`
 	Filename    string `json:"filename,omitempty"`
 }
 
+// ts:export MatrixSendMediaMessageOptions
 type postMediaReq struct {
 	RoomID            string `json:"roomId"`
 	Body              string `json:"body,omitempty"`
@@ -31,7 +33,7 @@ type postMediaReq struct {
 	Duration          int    `json:"duration,omitempty"`
 	Filename          string `json:"filename,omitempty"`
 	Height            int    `json:"height,omitempty"`
-	MsgType           string `json:"msgtype,omitempty"`
+	MsgType           string `json:"msgtype,omitempty" ts:"\"m.image\" | \"m.video\" | \"m.audio\" | \"m.file\""`
 	Size              int    `json:"size,omitempty"`
 	ThreadRootEventID string `json:"threadRootEventId,omitempty"`
 	Width             int    `json:"width,omitempty"`
@@ -145,6 +147,7 @@ func (c *Core) handlePostMediaMessage(ctx context.Context, payload []byte) ([]by
 	return json.Marshal(rawMessageResp{EventID: resp.EventID.String(), RoomID: req.RoomID, Raw: resp})
 }
 
+// ts:export MatrixDownloadMediaOptions
 type downloadMediaReq struct {
 	ContentURI string `json:"contentUri"`
 }
@@ -171,20 +174,22 @@ func (c *Core) handleDownloadMedia(ctx context.Context, payload []byte) ([]byte,
 	return json.Marshal(OutboundEvent{"bytesBase64": base64.StdEncoding.EncodeToString(data)})
 }
 
+// ts:export MatrixEncryptedFile
 type encryptedFile struct {
-	Hashes map[string]string `json:"hashes"`
+	Hashes map[string]string `json:"hashes" ts:"{ sha256: string }"`
 	IV     string            `json:"iv"`
-	Key    encryptedFileKey  `json:"key"`
+	Key    encryptedFileKey  `json:"key" ts:"MatrixEncryptedFileKey"`
 	URL    string            `json:"url"`
-	V      string            `json:"v"`
+	V      string            `json:"v" ts:"\"v2\""`
 }
 
+// ts:export MatrixEncryptedFileKey
 type encryptedFileKey struct {
-	Alg    string   `json:"alg"`
-	Ext    bool     `json:"ext"`
+	Alg    string   `json:"alg" ts:"\"A256CTR\""`
+	Ext    bool     `json:"ext" ts:"true"`
 	K      string   `json:"k"`
-	KeyOps []string `json:"key_ops"`
-	Kty    string   `json:"kty"`
+	KeyOps []string `json:"key_ops" ts:"[\"encrypt\", \"decrypt\"]"`
+	Kty    string   `json:"kty" ts:"\"oct\""`
 }
 
 func (c *Core) handleUploadEncryptedMedia(ctx context.Context, payload []byte) ([]byte, error) {
@@ -218,8 +223,9 @@ func (c *Core) handleUploadEncryptedMedia(ctx context.Context, payload []byte) (
 	})
 }
 
+// ts:export MatrixDownloadEncryptedMediaOptions
 type downloadEncryptedMediaReq struct {
-	File encryptedFile `json:"file"`
+	File encryptedFile `json:"file" ts:"MatrixEncryptedFile"`
 }
 
 func (c *Core) handleDownloadEncryptedMedia(ctx context.Context, payload []byte) ([]byte, error) {
@@ -352,10 +358,10 @@ func messageAttachments(content *event.MessageEventContent) []tsMediaAttachment 
 	}
 	if content.File != nil {
 		file := encryptedFileFromEvent(content.File)
-		attachment.EncryptedFile = &tsEncryptedFile{
+		attachment.EncryptedFile = &encryptedFile{
 			Hashes: file.Hashes,
 			IV:     file.IV,
-			Key: tsEncryptedFileKey{
+			Key: encryptedFileKey{
 				Alg:    file.Key.Alg,
 				Ext:    file.Key.Ext,
 				K:      file.Key.K,

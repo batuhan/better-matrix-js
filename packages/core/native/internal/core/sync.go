@@ -15,10 +15,12 @@ const (
 	noHistorySyncFilter = `{"room":{"account_data":{"limit":0},"ephemeral":{"limit":0},"state":{"limit":0},"timeline":{"limit":0}}}`
 )
 
+// ts:export MatrixSyncOnceOptions
 type syncOnceReq struct {
 	TimeoutMS int `json:"timeoutMs,omitempty"`
 }
 
+// ts:export MatrixSyncStartOptions
 type syncStartReq struct {
 	RetryDelayMS int `json:"retryDelayMs,omitempty"`
 	TimeoutMS    int `json:"timeoutMs,omitempty"`
@@ -201,6 +203,7 @@ func clearRoomTimelines(resp *mautrix.RespSync) {
 	}
 }
 
+// ts:export MatrixApplySyncResponseOptions
 type applySyncReq struct {
 	Since    string          `json:"since,omitempty"`
 	Response json.RawMessage `json:"response"`

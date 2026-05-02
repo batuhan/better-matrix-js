@@ -13,10 +13,12 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
+// ts:export MatrixFetchRoomOptions
 type roomReq struct {
 	RoomID string `json:"roomId"`
 }
 
+// ts:export MatrixRoomInfo
 type roomInfo struct {
 	Encrypted   bool           `json:"encrypted"`
 	ID          string         `json:"id"`
@@ -26,7 +28,7 @@ type roomInfo struct {
 	Name        string         `json:"name,omitempty"`
 	Topic       string         `json:"topic,omitempty"`
 	Raw         map[string]any `json:"raw,omitempty"`
-	Visibility  string         `json:"visibility,omitempty"`
+	Visibility  string         `json:"visibility,omitempty" ts:"\"private\" | \"workspace\" | \"external\" | \"unknown\""`
 }
 
 func (c *Core) handleFetchRoom(ctx context.Context, payload []byte) ([]byte, error) {
@@ -95,6 +97,7 @@ func (c *Core) handleFetchRoom(ctx context.Context, payload []byte) ([]byte, err
 	return json.Marshal(info)
 }
 
+// ts:export MatrixOpenDMOptions
 type openDMReq struct {
 	UserID string `json:"userId"`
 }
@@ -138,6 +141,7 @@ func (c *Core) handleOpenDM(ctx context.Context, payload []byte) ([]byte, error)
 	return json.Marshal(OutboundEvent{"roomId": resp.RoomID.String(), "raw": resp})
 }
 
+// ts:export MatrixJoinRoomOptions
 type joinRoomReq struct {
 	RoomIDOrAlias string `json:"roomIdOrAlias"`
 }
@@ -160,6 +164,7 @@ func (c *Core) handleJoinRoom(ctx context.Context, payload []byte) ([]byte, erro
 	return json.Marshal(OutboundEvent{"roomId": resp.RoomID.String(), "raw": resp})
 }
 
+// ts:export MatrixLeaveRoomOptions
 type leaveRoomReq struct {
 	Reason string `json:"reason,omitempty"`
 	RoomID string `json:"roomId"`
@@ -187,6 +192,7 @@ func (c *Core) handleLeaveRoom(ctx context.Context, payload []byte) ([]byte, err
 	return json.Marshal(OutboundEvent{"raw": resp})
 }
 
+// ts:export MatrixInviteUserOptions
 type inviteUserReq struct {
 	Reason string `json:"reason,omitempty"`
 	RoomID string `json:"roomId"`
