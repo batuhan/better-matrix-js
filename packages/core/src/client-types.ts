@@ -15,6 +15,7 @@ import type {
   FetchMessagesResult,
   FetchRoomMembersOptions,
   FetchRoomMembersResult,
+  FetchRoomPowerLevelsOptions,
   FetchRoomStateEventOptions,
   FetchRoomStateOptions,
   FetchRoomStateResult,
@@ -42,6 +43,7 @@ import type {
   ResolveRoomAliasOptions,
   ResolveRoomAliasResult,
   RoomInfo,
+  RoomPowerLevels,
   RoomStateEvent,
   SendBeeperEphemeralOptions,
   SendMatrixStreamOptions,
@@ -122,6 +124,7 @@ export interface MatrixRooms {
   ban(options: BanUserOptions): Promise<void>;
   create(options: CreateRoomOptions): Promise<CreateRoomResult>;
   get(options: { roomId: string }): Promise<RoomInfo>;
+  getPowerLevels(options: FetchRoomPowerLevelsOptions): Promise<RoomPowerLevels>;
   getState(options: FetchRoomStateOptions): Promise<FetchRoomStateResult>;
   getStateEvent(options: FetchRoomStateEventOptions): Promise<RoomStateEvent>;
   invite(options: { reason?: string; roomId: string; userId: string }): Promise<void>;

@@ -442,6 +442,24 @@ export interface RoomStateEvent {
   type: string;
 }
 
+export interface RoomPowerLevels {
+  ban?: number;
+  events?: Record<string, number>;
+  eventsDefault?: number;
+  invite?: number;
+  kick?: number;
+  notifications?: Record<string, number>;
+  redact?: number;
+  raw: Record<string, unknown>;
+  stateDefault?: number;
+  users?: Record<string, number>;
+  usersDefault?: number;
+}
+
+export interface FetchRoomPowerLevelsOptions {
+  roomId: string;
+}
+
 export interface FetchRoomStateOptions {
   roomId: string;
 }

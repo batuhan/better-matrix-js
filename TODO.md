@@ -27,7 +27,7 @@
 - [x] Expose recovery/backup status after startup.
 - [x] Add profile APIs: get/set own display name and avatar.
 - [x] Add room creation API beyond DM creation.
-- [ ] Add room permission/power-level inspection.
+- [x] Add room permission/power-level inspection.
 - [x] Add generic room state read/send APIs for advanced users.
 - [x] Add member listing and member event/profile APIs.
 - [x] Add room alias resolution and optional directory lookup.

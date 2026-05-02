@@ -159,8 +159,28 @@ class DefaultMatrixClient implements MatrixClient {
           roomVersion: opts.roomVersion,
           topic: opts.topic,
           visibility: opts.visibility,
-        })),
+      })),
       get: (opts) => this.#coreRequired().fetchRoom(opts),
+      getPowerLevels: async (opts) => {
+        const event = await this.#coreRequired().fetchRoomStateEvent({
+          eventType: "m.room.power_levels",
+          roomId: opts.roomId,
+          stateKey: "",
+        });
+        return stripUndefined({
+          ban: readNumber(event.content.ban),
+          events: readNumberRecord(event.content.events),
+          eventsDefault: readNumber(event.content.events_default),
+          invite: readNumber(event.content.invite),
+          kick: readNumber(event.content.kick),
+          notifications: readNumberRecord(event.content.notifications),
+          raw: event.content,
+          redact: readNumber(event.content.redact),
+          stateDefault: readNumber(event.content.state_default),
+          users: readNumberRecord(event.content.users),
+          usersDefault: readNumber(event.content.users_default),
+        });
+      },
       getState: (opts) => this.#coreRequired().fetchRoomState(opts),
       getStateEvent: (opts) => this.#coreRequired().fetchRoomStateEvent(stripUndefined({
         eventType: opts.eventType,
@@ -315,4 +335,21 @@ class DefaultMatrixClient implements MatrixClient {
       }
     });
   }
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readNumberRecord(value: unknown): Record<string, number> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const result: Record<string, number> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry === "number" && Number.isFinite(entry)) {
+      result[key] = entry;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
 }
