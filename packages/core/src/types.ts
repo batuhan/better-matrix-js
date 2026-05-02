@@ -10,6 +10,7 @@ export interface MatrixLogger {
 }
 
 export interface MatrixClientOptions {
+  beeperStreaming?: boolean;
   deviceId?: string;
   fetch?: typeof fetch;
   homeserver: string;
@@ -326,6 +327,30 @@ export interface SendMediaMessageOptions extends MatrixMediaInfo {
   threadRoot?: string;
 }
 
+export interface RoomStateInput {
+  content: Record<string, unknown>;
+  stateKey?: string;
+  type: string;
+}
+
+export interface CreateRoomOptions {
+  creationContent?: Record<string, unknown>;
+  initialState?: RoomStateInput[];
+  invite?: string[];
+  isDirect?: boolean;
+  name?: string;
+  preset?: "private_chat" | "public_chat" | "trusted_private_chat" | string;
+  roomAliasName?: string;
+  roomVersion?: string;
+  topic?: string;
+  visibility?: "public" | "private" | string;
+}
+
+export interface CreateRoomResult {
+  raw: unknown;
+  roomId: string;
+}
+
 export interface RoomInfo {
   encrypted: boolean;
   id: string;
@@ -336,6 +361,79 @@ export interface RoomInfo {
   raw?: Record<string, unknown>;
   topic?: string;
   visibility?: "private" | "workspace" | "external" | "unknown";
+}
+
+export interface RoomStateEvent {
+  content: Record<string, unknown>;
+  eventId?: string;
+  originServerTs?: number;
+  raw: unknown;
+  roomId: string;
+  sender?: string;
+  stateKey: string;
+  type: string;
+}
+
+export interface FetchRoomStateOptions {
+  roomId: string;
+}
+
+export interface FetchRoomStateEventOptions {
+  eventType: string;
+  roomId: string;
+  stateKey?: string;
+}
+
+export interface FetchRoomStateResult {
+  events: RoomStateEvent[];
+  raw: unknown;
+}
+
+export interface SendRoomStateEventOptions {
+  content: Record<string, unknown>;
+  eventType: string;
+  roomId: string;
+  stateKey?: string;
+}
+
+export interface FetchRoomMembersOptions {
+  at?: string;
+  membership?: "join" | "invite" | "leave" | "ban" | "knock" | string;
+  notMembership?: "join" | "invite" | "leave" | "ban" | "knock" | string;
+  roomId: string;
+}
+
+export interface RoomMember {
+  avatarUrl?: string;
+  displayName?: string;
+  membership: "join" | "invite" | "leave" | "ban" | "knock" | string;
+  raw: unknown;
+  reason?: string;
+  userId: string;
+}
+
+export interface FetchRoomMembersResult {
+  members: RoomMember[];
+  raw: unknown;
+}
+
+export interface KickUserOptions {
+  reason?: string;
+  roomId: string;
+  userId: string;
+}
+
+export interface BanUserOptions {
+  reason?: string;
+  redactEvents?: boolean;
+  roomId: string;
+  userId: string;
+}
+
+export interface UnbanUserOptions {
+  reason?: string;
+  roomId: string;
+  userId: string;
 }
 
 export interface JoinRoomOptions {
@@ -363,6 +461,23 @@ export interface UserInfo {
   userId: string;
 }
 
+export interface OwnDisplayNameResult {
+  displayName?: string;
+  raw: unknown;
+}
+
+export interface SetOwnDisplayNameOptions {
+  displayName: string;
+}
+
+export interface OwnAvatarUrlResult {
+  avatarUrl?: string;
+}
+
+export interface SetOwnAvatarUrlOptions {
+  avatarUrl: string;
+}
+
 export interface ListThreadsOptions {
   cursor?: string;
   limit?: number;
@@ -381,12 +496,14 @@ export interface ListThreadsResult {
 }
 
 export interface SyncStartOptions {
+  beeperStreaming?: boolean;
   retryDelayMs?: number;
   signal?: AbortSignal;
   timeoutMs?: number;
 }
 
 export interface SyncOnceOptions {
+  beeperStreaming?: boolean;
   timeoutMs?: number;
 }
 

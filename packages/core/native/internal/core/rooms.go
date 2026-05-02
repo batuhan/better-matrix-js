@@ -17,6 +17,105 @@ type MatrixFetchRoomOptions struct {
 	RoomID string `json:"roomId"`
 }
 
+type MatrixRoomStateInput struct {
+	Content  OutboundEvent `json:"content" tstype:"{ [key: string]: unknown }"`
+	StateKey string        `json:"stateKey"`
+	Type     string        `json:"type"`
+}
+
+type MatrixCreateRoomOptions struct {
+	CreationContent OutboundEvent          `json:"creationContent,omitempty" tstype:"{ [key: string]: unknown }"`
+	InitialState    []MatrixRoomStateInput `json:"initialState,omitempty"`
+	Invite          []string               `json:"invite,omitempty"`
+	IsDirect        bool                   `json:"isDirect,omitempty"`
+	Name            string                 `json:"name,omitempty"`
+	Preset          string                 `json:"preset,omitempty" tstype:"\"private_chat\" | \"public_chat\" | \"trusted_private_chat\" | string"`
+	RoomAliasName   string                 `json:"roomAliasName,omitempty"`
+	RoomVersion     string                 `json:"roomVersion,omitempty"`
+	Topic           string                 `json:"topic,omitempty"`
+	Visibility      string                 `json:"visibility,omitempty" tstype:"\"public\" | \"private\" | string"`
+}
+
+type MatrixCreateRoomResult struct {
+	Raw    any    `json:"raw"`
+	RoomID string `json:"roomId"`
+}
+
+type MatrixRoomStateEvent struct {
+	Content        map[string]any `json:"content"`
+	EventID        string         `json:"eventId,omitempty"`
+	OriginServerTS *int64         `json:"originServerTs,omitempty"`
+	Raw            any            `json:"raw"`
+	RoomID         string         `json:"roomId"`
+	Sender         string         `json:"sender,omitempty"`
+	StateKey       string         `json:"stateKey"`
+	Type           string         `json:"type"`
+}
+
+type MatrixFetchRoomStateOptions struct {
+	RoomID string `json:"roomId"`
+}
+
+type MatrixFetchRoomStateEventOptions struct {
+	EventType string `json:"eventType"`
+	RoomID    string `json:"roomId"`
+	StateKey  string `json:"stateKey,omitempty"`
+}
+
+type MatrixFetchRoomStateResult struct {
+	Events []MatrixRoomStateEvent `json:"events"`
+	Raw    any                    `json:"raw"`
+}
+
+type MatrixSendRoomStateEventOptions struct {
+	Content   OutboundEvent `json:"content" tstype:"{ [key: string]: unknown }"`
+	EventType string        `json:"eventType"`
+	RoomID    string        `json:"roomId"`
+	StateKey  string        `json:"stateKey,omitempty"`
+}
+
+func (c *Core) handleCreateRoom(ctx context.Context, payload []byte) ([]byte, error) {
+	cli, err := c.requireClient()
+	if err != nil {
+		return nil, err
+	}
+	var req MatrixCreateRoomOptions
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return nil, err
+	}
+	invitees := make([]id.UserID, 0, len(req.Invite))
+	for _, userID := range req.Invite {
+		invitees = append(invitees, id.UserID(userID))
+	}
+	initialState := make([]*event.Event, 0, len(req.InitialState))
+	for _, state := range req.InitialState {
+		stateKey := state.StateKey
+		initialState = append(initialState, &event.Event{
+			Type:     event.NewEventType(state.Type),
+			StateKey: &stateKey,
+			Content:  event.Content{Raw: state.Content},
+		})
+	}
+	resp, err := retryMatrix(ctx, func() (*mautrix.RespCreateRoom, error) {
+		return cli.CreateRoom(ctx, &mautrix.ReqCreateRoom{
+			CreationContent: req.CreationContent,
+			InitialState:    initialState,
+			Invite:          invitees,
+			IsDirect:        req.IsDirect,
+			Name:            req.Name,
+			Preset:          req.Preset,
+			RoomAliasName:   req.RoomAliasName,
+			RoomVersion:     id.RoomVersion(req.RoomVersion),
+			Topic:           req.Topic,
+			Visibility:      req.Visibility,
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(MatrixCreateRoomResult{Raw: resp, RoomID: resp.RoomID.String()})
+}
+
 type MatrixRoomInfo struct {
 	Encrypted   bool           `json:"encrypted"`
 	ID          string         `json:"id"`
@@ -93,6 +192,70 @@ func (c *Core) handleFetchRoom(ctx context.Context, payload []byte) ([]byte, err
 		return nil, err
 	}
 	return json.Marshal(info)
+}
+
+func (c *Core) handleFetchRoomState(ctx context.Context, payload []byte) ([]byte, error) {
+	cli, err := c.requireClient()
+	if err != nil {
+		return nil, err
+	}
+	var req MatrixFetchRoomStateOptions
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return nil, err
+	}
+	events, err := retryMatrix(ctx, func() ([]*event.Event, error) {
+		return cli.StateAsArray(ctx, id.RoomID(req.RoomID))
+	})
+	if err != nil {
+		return nil, err
+	}
+	converted := make([]MatrixRoomStateEvent, 0, len(events))
+	for _, evt := range events {
+		converted = append(converted, c.convertRoomStateEvent(req.RoomID, evt))
+	}
+	return json.Marshal(MatrixFetchRoomStateResult{Events: converted, Raw: events})
+}
+
+func (c *Core) handleFetchRoomStateEvent(ctx context.Context, payload []byte) ([]byte, error) {
+	cli, err := c.requireClient()
+	if err != nil {
+		return nil, err
+	}
+	var req MatrixFetchRoomStateEventOptions
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return nil, err
+	}
+	var content map[string]any
+	if err := retryMatrixVoid(ctx, func() error {
+		return cli.StateEvent(ctx, id.RoomID(req.RoomID), event.NewEventType(req.EventType), req.StateKey, &content)
+	}); err != nil {
+		return nil, err
+	}
+	return json.Marshal(MatrixRoomStateEvent{
+		Content:  content,
+		Raw:      content,
+		RoomID:   req.RoomID,
+		StateKey: req.StateKey,
+		Type:     req.EventType,
+	})
+}
+
+func (c *Core) handleSendRoomStateEvent(ctx context.Context, payload []byte) ([]byte, error) {
+	cli, err := c.requireClient()
+	if err != nil {
+		return nil, err
+	}
+	var req MatrixSendRoomStateEventOptions
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return nil, err
+	}
+	resp, err := retryMatrix(ctx, func() (*mautrix.RespSendEvent, error) {
+		return cli.SendStateEvent(ctx, id.RoomID(req.RoomID), event.NewEventType(req.EventType), req.StateKey, req.Content)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(MatrixRawMessage{EventID: resp.EventID.String(), RoomID: req.RoomID, Raw: resp})
 }
 
 type MatrixOpenDMOptions struct {
@@ -214,6 +377,142 @@ func (c *Core) handleInviteUser(ctx context.Context, payload []byte) ([]byte, er
 	return json.Marshal(OutboundEvent{"raw": resp})
 }
 
+type MatrixFetchRoomMembersOptions struct {
+	At            string `json:"at,omitempty"`
+	Membership    string `json:"membership,omitempty" tstype:"\"join\" | \"invite\" | \"leave\" | \"ban\" | \"knock\" | string"`
+	NotMembership string `json:"notMembership,omitempty" tstype:"\"join\" | \"invite\" | \"leave\" | \"ban\" | \"knock\" | string"`
+	RoomID        string `json:"roomId"`
+}
+
+type MatrixRoomMember struct {
+	AvatarURL   string `json:"avatarUrl,omitempty"`
+	DisplayName string `json:"displayName,omitempty"`
+	Membership  string `json:"membership"`
+	Raw         any    `json:"raw"`
+	Reason      string `json:"reason,omitempty"`
+	UserID      string `json:"userId"`
+}
+
+type MatrixRoomMembersResult struct {
+	Members []MatrixRoomMember `json:"members"`
+	Raw     any                `json:"raw"`
+}
+
+type MatrixKickUserOptions struct {
+	Reason string `json:"reason,omitempty"`
+	RoomID string `json:"roomId"`
+	UserID string `json:"userId"`
+}
+
+type MatrixBanUserOptions struct {
+	Reason       string `json:"reason,omitempty"`
+	RedactEvents bool   `json:"redactEvents,omitempty"`
+	RoomID       string `json:"roomId"`
+	UserID       string `json:"userId"`
+}
+
+type MatrixUnbanUserOptions struct {
+	Reason string `json:"reason,omitempty"`
+	RoomID string `json:"roomId"`
+	UserID string `json:"userId"`
+}
+
+func (c *Core) handleFetchRoomMembers(ctx context.Context, payload []byte) ([]byte, error) {
+	cli, err := c.requireClient()
+	if err != nil {
+		return nil, err
+	}
+	var req MatrixFetchRoomMembersOptions
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return nil, err
+	}
+	resp, err := retryMatrix(ctx, func() (*mautrix.RespMembers, error) {
+		return cli.Members(ctx, id.RoomID(req.RoomID), mautrix.ReqMembers{
+			At:            req.At,
+			Membership:    event.Membership(req.Membership),
+			NotMembership: event.Membership(req.NotMembership),
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	members := make([]MatrixRoomMember, 0, len(resp.Chunk))
+	for _, evt := range resp.Chunk {
+		if evt == nil {
+			continue
+		}
+		content := evt.Content.AsMember()
+		userID := ""
+		if evt.StateKey != nil {
+			userID = *evt.StateKey
+		}
+		members = append(members, MatrixRoomMember{
+			AvatarURL:   string(content.AvatarURL),
+			DisplayName: content.Displayname,
+			Membership:  string(content.Membership),
+			Raw:         evt,
+			Reason:      content.Reason,
+			UserID:      userID,
+		})
+	}
+	return json.Marshal(MatrixRoomMembersResult{Members: members, Raw: resp})
+}
+
+func (c *Core) handleKickUser(ctx context.Context, payload []byte) ([]byte, error) {
+	cli, err := c.requireClient()
+	if err != nil {
+		return nil, err
+	}
+	var req MatrixKickUserOptions
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return nil, err
+	}
+	_, err = retryMatrix(ctx, func() (*mautrix.RespKickUser, error) {
+		return cli.KickUser(ctx, id.RoomID(req.RoomID), &mautrix.ReqKickUser{
+			Reason: req.Reason,
+			UserID: id.UserID(req.UserID),
+		})
+	})
+	return c.emptyIfNil(err)
+}
+
+func (c *Core) handleBanUser(ctx context.Context, payload []byte) ([]byte, error) {
+	cli, err := c.requireClient()
+	if err != nil {
+		return nil, err
+	}
+	var req MatrixBanUserOptions
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return nil, err
+	}
+	_, err = retryMatrix(ctx, func() (*mautrix.RespBanUser, error) {
+		return cli.BanUser(ctx, id.RoomID(req.RoomID), &mautrix.ReqBanUser{
+			Reason:              req.Reason,
+			UserID:              id.UserID(req.UserID),
+			MSC4293RedactEvents: req.RedactEvents,
+		})
+	})
+	return c.emptyIfNil(err)
+}
+
+func (c *Core) handleUnbanUser(ctx context.Context, payload []byte) ([]byte, error) {
+	cli, err := c.requireClient()
+	if err != nil {
+		return nil, err
+	}
+	var req MatrixUnbanUserOptions
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return nil, err
+	}
+	_, err = retryMatrix(ctx, func() (*mautrix.RespUnbanUser, error) {
+		return cli.UnbanUser(ctx, id.RoomID(req.RoomID), &mautrix.ReqUnbanUser{
+			Reason: req.Reason,
+			UserID: id.UserID(req.UserID),
+		})
+	})
+	return c.emptyIfNil(err)
+}
+
 func (c *Core) handleFetchJoinedRooms(ctx context.Context) ([]byte, error) {
 	cli, err := c.requireClient()
 	if err != nil {
@@ -230,6 +529,30 @@ func (c *Core) handleFetchJoinedRooms(ctx context.Context) ([]byte, error) {
 		rooms = append(rooms, roomID.String())
 	}
 	return json.Marshal(OutboundEvent{"roomIds": rooms, "raw": resp})
+}
+
+func (c *Core) convertRoomStateEvent(roomID string, evt *event.Event) MatrixRoomStateEvent {
+	if evt == nil {
+		return MatrixRoomStateEvent{RoomID: roomID}
+	}
+	_ = evt.Content.ParseRaw(evt.Type)
+	stateKey := ""
+	if evt.StateKey != nil {
+		stateKey = *evt.StateKey
+	}
+	if roomID == "" {
+		roomID = evt.RoomID.String()
+	}
+	return MatrixRoomStateEvent{
+		Content:        evt.Content.Raw,
+		EventID:        evt.ID.String(),
+		OriginServerTS: &evt.Timestamp,
+		Raw:            evt,
+		RoomID:         roomID,
+		Sender:         evt.Sender.String(),
+		StateKey:       stateKey,
+		Type:           evt.Type.Type,
+	}
 }
 
 func (c *Core) updateDirectChats(ctx context.Context, cli *mautrix.Client, userID id.UserID, roomID id.RoomID) {

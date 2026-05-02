@@ -161,12 +161,44 @@ class DefaultMatrixClient implements MatrixClient {
       uploadEncrypted: (opts) => this.#uploadEncryptedMediaBytes(opts),
     };
     this.rooms = {
+      ban: (opts) => this.#coreRequired().banUser(opts),
+      create: (opts) =>
+        this.#coreRequired().createRoom(stripUndefined({
+          creationContent: opts.creationContent,
+          initialState: opts.initialState?.map((state) => ({
+            content: state.content,
+            stateKey: state.stateKey ?? "",
+            type: state.type,
+          })),
+          invite: opts.invite,
+          isDirect: opts.isDirect,
+          name: opts.name,
+          preset: opts.preset,
+          roomAliasName: opts.roomAliasName,
+          roomVersion: opts.roomVersion,
+          topic: opts.topic,
+          visibility: opts.visibility,
+        })),
       get: (opts) => this.#coreRequired().fetchRoom(opts),
+      getState: (opts) => this.#coreRequired().fetchRoomState(opts),
+      getStateEvent: (opts) => this.#coreRequired().fetchRoomStateEvent(stripUndefined({
+        eventType: opts.eventType,
+        roomId: opts.roomId,
+        stateKey: opts.stateKey,
+      })),
       invite: (opts) => this.#coreRequired().inviteUser(opts),
       join: (opts) => this.#coreRequired().joinRoom(opts),
+      kick: (opts) => this.#coreRequired().kickUser(opts),
       leave: (opts) => this.#coreRequired().leaveRoom(opts),
+      listMembers: (opts) => this.#coreRequired().fetchRoomMembers(stripUndefined(opts)),
       listJoined: () => this.#coreRequired().fetchJoinedRooms(),
       openDM: (opts) => this.#coreRequired().openDM(opts),
+      sendStateEvent: (opts) => this.#coreRequired().sendRoomStateEvent(stripUndefined({
+        content: opts.content,
+        eventType: opts.eventType,
+        roomId: opts.roomId,
+        stateKey: opts.stateKey,
+      })),
       threads: {
         list: async (opts) => {
           const result = await this.#coreRequired().listRoomThreads(opts);
@@ -180,6 +212,7 @@ class DefaultMatrixClient implements MatrixClient {
           });
         },
       },
+      unban: (opts) => this.#coreRequired().unbanUser(opts),
     };
     this.streams = createMatrixStreams({
       beeper: this.beeper,
@@ -188,11 +221,15 @@ class DefaultMatrixClient implements MatrixClient {
     });
     this.sync = {
       applyResponse: (opts) => this.#coreRequired().applySyncResponse(opts),
-      once: (opts) => this.#coreRequired().syncOnce(opts),
+      once: (opts = {}) => this.#coreRequired().syncOnce(stripUndefined({
+        beeperStreaming: opts.beeperStreaming ?? this.#options.beeperStreaming,
+        timeoutMs: opts.timeoutMs,
+      })),
       start: async (opts = {}) => {
         if (this.#syncAbort) return;
         if (opts.signal?.aborted) return;
         await this.#coreRequired().startSync(stripUndefined({
+          beeperStreaming: opts.beeperStreaming ?? this.#options.beeperStreaming,
           retryDelayMs: opts.retryDelayMs,
           timeoutMs: opts.timeoutMs,
         }));
@@ -211,6 +248,10 @@ class DefaultMatrixClient implements MatrixClient {
     };
     this.users = {
       get: (opts) => this.#coreRequired().getUser(opts),
+      getOwnAvatarUrl: () => this.#coreRequired().getOwnAvatarURL(),
+      getOwnDisplayName: () => this.#coreRequired().getOwnDisplayName(),
+      setOwnAvatarUrl: (opts) => this.#coreRequired().setOwnAvatarURL(opts),
+      setOwnDisplayName: (opts) => this.#coreRequired().setOwnDisplayName(opts),
     };
   }
 

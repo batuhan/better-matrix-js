@@ -114,8 +114,16 @@ func (c *Core) Handle(ctx context.Context, op string, payload []byte) ([]byte, e
 		return c.handleUploadEncryptedMedia(ctx, payload)
 	case opDownloadEncryptedMedia:
 		return c.handleDownloadEncryptedMedia(ctx, payload)
+	case opCreateRoom:
+		return c.handleCreateRoom(ctx, payload)
 	case opFetchRoom:
 		return c.handleFetchRoom(ctx, payload)
+	case opFetchRoomState:
+		return c.handleFetchRoomState(ctx, payload)
+	case opFetchRoomStateEvent:
+		return c.handleFetchRoomStateEvent(ctx, payload)
+	case opSendRoomStateEvent:
+		return c.handleSendRoomStateEvent(ctx, payload)
 	case opOpenDM:
 		return c.handleOpenDM(ctx, payload)
 	case opJoinRoom:
@@ -124,10 +132,26 @@ func (c *Core) Handle(ctx context.Context, op string, payload []byte) ([]byte, e
 		return c.handleLeaveRoom(ctx, payload)
 	case opInviteUser:
 		return c.handleInviteUser(ctx, payload)
+	case opFetchRoomMembers:
+		return c.handleFetchRoomMembers(ctx, payload)
+	case opKickUser:
+		return c.handleKickUser(ctx, payload)
+	case opBanUser:
+		return c.handleBanUser(ctx, payload)
+	case opUnbanUser:
+		return c.handleUnbanUser(ctx, payload)
 	case opFetchJoinedRooms:
 		return c.handleFetchJoinedRooms(ctx)
 	case opGetUser:
 		return c.handleGetUser(ctx, payload)
+	case opGetOwnDisplayName:
+		return c.handleGetOwnDisplayName(ctx)
+	case opSetOwnDisplayName:
+		return c.handleSetOwnDisplayName(ctx, payload)
+	case opGetOwnAvatarURL:
+		return c.handleGetOwnAvatarURL(ctx)
+	case opSetOwnAvatarURL:
+		return c.handleSetOwnAvatarURL(ctx, payload)
 	case opListRoomThreads:
 		return c.handleListRoomThreads(ctx, payload)
 	case opClose:

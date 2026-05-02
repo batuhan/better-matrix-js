@@ -1,6 +1,9 @@
 import type {
   ApplySyncResponseOptions,
+  BanUserOptions,
   CreateBeeperStreamOptions,
+  CreateRoomOptions,
+  CreateRoomResult,
   DownloadEncryptedMediaOptions,
   DownloadMediaOptions,
   DownloadMediaResult,
@@ -9,8 +12,14 @@ import type {
   FetchMessageResult,
   FetchMessagesOptions,
   FetchMessagesResult,
+  FetchRoomMembersOptions,
+  FetchRoomMembersResult,
+  FetchRoomStateEventOptions,
+  FetchRoomStateOptions,
+  FetchRoomStateResult,
   JoinRoomOptions,
   JoinRoomResult,
+  KickUserOptions,
   ListThreadsOptions,
   ListThreadsResult,
   MarkReadOptions,
@@ -20,19 +29,26 @@ import type {
   MatrixWhoami,
   OpenDMOptions,
   OpenDMResult,
+  OwnAvatarUrlResult,
+  OwnDisplayNameResult,
   PublishBeeperStreamOptions,
   ReactionOptions,
   RedactMessageOptions,
   RegisterBeeperStreamOptions,
   RoomInfo,
+  RoomStateEvent,
   SendBeeperEphemeralOptions,
   SendMatrixStreamOptions,
   SendMediaMessageOptions,
   SendMessageOptions,
+  SendRoomStateEventOptions,
+  SetOwnAvatarUrlOptions,
+  SetOwnDisplayNameOptions,
   SentEvent,
   SyncOnceOptions,
   SyncStartOptions,
   TypingOptions,
+  UnbanUserOptions,
   UploadEncryptedMediaResult,
   UploadMediaOptions,
   UploadMediaResult,
@@ -92,15 +108,23 @@ export interface MatrixReactions {
 }
 
 export interface MatrixRooms {
+  ban(options: BanUserOptions): Promise<void>;
+  create(options: CreateRoomOptions): Promise<CreateRoomResult>;
   get(options: { roomId: string }): Promise<RoomInfo>;
+  getState(options: FetchRoomStateOptions): Promise<FetchRoomStateResult>;
+  getStateEvent(options: FetchRoomStateEventOptions): Promise<RoomStateEvent>;
   invite(options: { reason?: string; roomId: string; userId: string }): Promise<void>;
   join(options: JoinRoomOptions): Promise<JoinRoomResult>;
+  kick(options: KickUserOptions): Promise<void>;
   leave(options: { reason?: string; roomId: string }): Promise<void>;
+  listMembers(options: FetchRoomMembersOptions): Promise<FetchRoomMembersResult>;
   listJoined(): Promise<{ raw: unknown; roomIds: string[] }>;
   openDM(options: OpenDMOptions): Promise<OpenDMResult>;
+  sendStateEvent(options: SendRoomStateEventOptions): Promise<SentEvent>;
   threads: {
     list(options: ListThreadsOptions): Promise<ListThreadsResult>;
   };
+  unban(options: UnbanUserOptions): Promise<void>;
 }
 
 export interface MatrixMedia {
@@ -116,6 +140,10 @@ export interface MatrixTyping {
 
 export interface MatrixUsers {
   get(options: { userId: string }): Promise<UserInfo>;
+  getOwnAvatarUrl(): Promise<OwnAvatarUrlResult>;
+  getOwnDisplayName(): Promise<OwnDisplayNameResult>;
+  setOwnAvatarUrl(options: SetOwnAvatarUrlOptions): Promise<void>;
+  setOwnDisplayName(options: SetOwnDisplayNameOptions): Promise<void>;
 }
 
 export interface MatrixSync {

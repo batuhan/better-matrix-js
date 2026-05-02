@@ -137,6 +137,37 @@ describe("createMatrixClient", () => {
     expect(calls[1]?.payload).toEqual({ retryDelayMs: 250, timeoutMs: 12_345 });
   });
 
+  it("maps the public own profile API to the runtime contract", async () => {
+    const calls = installRuntime({
+      get_own_avatar_url: { avatarUrl: "mxc://example/avatar" },
+      get_own_display_name: { displayName: "Bot", raw: {} },
+      init: { deviceId: "DEVICE", userId: "@bot:example.com" },
+      set_own_avatar_url: {},
+      set_own_display_name: {},
+    });
+    const client = createMatrixClient({
+      homeserver: "https://matrix.example.com",
+      token: "token",
+      wasmModule: {} as WebAssembly.Module,
+    });
+
+    await client.connect();
+    await expect(client.users.getOwnDisplayName()).resolves.toEqual({ displayName: "Bot", raw: {} });
+    await client.users.setOwnDisplayName({ displayName: "New Bot" });
+    await expect(client.users.getOwnAvatarUrl()).resolves.toEqual({ avatarUrl: "mxc://example/avatar" });
+    await client.users.setOwnAvatarUrl({ avatarUrl: "mxc://example/new-avatar" });
+
+    expect(calls.map((call) => call.operation)).toEqual([
+      "init",
+      "get_own_display_name",
+      "set_own_display_name",
+      "get_own_avatar_url",
+      "set_own_avatar_url",
+    ]);
+    expect(calls[2]?.payload).toEqual({ displayName: "New Bot" });
+    expect(calls[4]?.payload).toEqual({ avatarUrl: "mxc://example/new-avatar" });
+  });
+
   it("streams with Matrix edits on non-Beeper homeservers", async () => {
     const calls = installRuntime({
       edit_message: { eventId: "$edit", raw: {}, roomId: "!room:example.com" },

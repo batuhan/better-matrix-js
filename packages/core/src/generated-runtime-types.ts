@@ -140,6 +140,55 @@ export interface MatrixReactionOptions {
 export interface MatrixFetchRoomOptions {
   roomId: string;
 }
+export interface MatrixRoomStateInput {
+  content: { [key: string]: unknown };
+  stateKey: string;
+  type: string;
+}
+export interface MatrixCreateRoomOptions {
+  creationContent?: { [key: string]: unknown };
+  initialState?: MatrixRoomStateInput[];
+  invite?: string[];
+  isDirect?: boolean;
+  name?: string;
+  preset?: "private_chat" | "public_chat" | "trusted_private_chat" | string;
+  roomAliasName?: string;
+  roomVersion?: string;
+  topic?: string;
+  visibility?: "public" | "private" | string;
+}
+export interface MatrixCreateRoomResult {
+  raw: unknown;
+  roomId: string;
+}
+export interface MatrixRoomStateEvent {
+  content: { [key: string]: unknown};
+  eventId?: string;
+  originServerTs?: number /* int64 */;
+  raw: unknown;
+  roomId: string;
+  sender?: string;
+  stateKey: string;
+  type: string;
+}
+export interface MatrixFetchRoomStateOptions {
+  roomId: string;
+}
+export interface MatrixFetchRoomStateEventOptions {
+  eventType: string;
+  roomId: string;
+  stateKey?: string;
+}
+export interface MatrixFetchRoomStateResult {
+  events: MatrixRoomStateEvent[];
+  raw: unknown;
+}
+export interface MatrixSendRoomStateEventOptions {
+  content: { [key: string]: unknown };
+  eventType: string;
+  roomId: string;
+  stateKey?: string;
+}
 export interface MatrixRoomInfo {
   encrypted: boolean;
   id: string;
@@ -166,10 +215,46 @@ export interface MatrixInviteUserOptions {
   roomId: string;
   userId: string;
 }
+export interface MatrixFetchRoomMembersOptions {
+  at?: string;
+  membership?: "join" | "invite" | "leave" | "ban" | "knock" | string;
+  notMembership?: "join" | "invite" | "leave" | "ban" | "knock" | string;
+  roomId: string;
+}
+export interface MatrixRoomMember {
+  avatarUrl?: string;
+  displayName?: string;
+  membership: string;
+  raw: unknown;
+  reason?: string;
+  userId: string;
+}
+export interface MatrixRoomMembersResult {
+  members: MatrixRoomMember[];
+  raw: unknown;
+}
+export interface MatrixKickUserOptions {
+  reason?: string;
+  roomId: string;
+  userId: string;
+}
+export interface MatrixBanUserOptions {
+  reason?: string;
+  redactEvents?: boolean;
+  roomId: string;
+  userId: string;
+}
+export interface MatrixUnbanUserOptions {
+  reason?: string;
+  roomId: string;
+  userId: string;
+}
 export interface MatrixSyncOnceOptions {
+  beeperStreaming?: boolean;
   timeoutMs?: number /* int */;
 }
 export interface MatrixSyncStartOptions {
+  beeperStreaming?: boolean;
   retryDelayMs?: number /* int */;
   timeoutMs?: number /* int */;
 }
@@ -273,4 +358,17 @@ export interface MatrixListRoomThreadsResult {
 }
 export interface MatrixGetUserOptions {
   userId: string;
+}
+export interface MatrixOwnDisplayNameResult {
+  displayName?: string;
+  raw: unknown;
+}
+export interface MatrixSetOwnDisplayNameOptions {
+  displayName: string;
+}
+export interface MatrixOwnAvatarURLResult {
+  avatarUrl?: string;
+}
+export interface MatrixSetOwnAvatarURLOptions {
+  avatarUrl: string;
 }

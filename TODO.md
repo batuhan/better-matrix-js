@@ -25,11 +25,11 @@
 - [ ] Expose `client.crypto.status()` or equivalent queryable E2EE status.
 - [ ] Expose pending decryption count/status.
 - [ ] Expose recovery/backup status after startup.
-- [ ] Add profile APIs: get/set own display name and avatar.
-- [ ] Add room creation API beyond DM creation.
+- [x] Add profile APIs: get/set own display name and avatar.
+- [x] Add room creation API beyond DM creation.
 - [ ] Add room permission/power-level inspection.
-- [ ] Add generic room state read/send APIs for advanced users.
-- [ ] Add member listing and member event/profile APIs.
+- [x] Add generic room state read/send APIs for advanced users.
+- [x] Add member listing and member event/profile APIs.
 - [ ] Add room alias resolution and optional directory lookup.
 - [ ] Add optional media thumbnail support.
 - [ ] Decide whether URL previews belong in scope; document unsupported if not.
@@ -47,7 +47,7 @@
 - [ ] Make `openDM(userId)` reuse existing `m.direct` rooms by default.
 - [ ] Add an option to force creating a new DM when needed.
 - [ ] Use `m.direct` account data for DM detection before member-count fallback.
-- [ ] Make Beeper sync options conditional instead of setting `BeeperStreaming: true` for every homeserver.
+- [x] Make Beeper sync options conditional instead of setting `BeeperStreaming: true` for every homeserver.
 - [ ] Add Beeper capability detection beyond hostname fallback.
 - [ ] Keep encrypted media behavior in Go; remove duplicate TS parsing paths.
 - [ ] Ensure fetch-message pagination always returns chronological page order.

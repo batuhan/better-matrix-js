@@ -16,12 +16,14 @@ const (
 )
 
 type MatrixSyncOnceOptions struct {
-	TimeoutMS int `json:"timeoutMs,omitempty"`
+	BeeperStreaming bool `json:"beeperStreaming,omitempty"`
+	TimeoutMS       int  `json:"timeoutMs,omitempty"`
 }
 
 type MatrixSyncStartOptions struct {
-	RetryDelayMS int `json:"retryDelayMs,omitempty"`
-	TimeoutMS    int `json:"timeoutMs,omitempty"`
+	BeeperStreaming bool `json:"beeperStreaming,omitempty"`
+	RetryDelayMS    int  `json:"retryDelayMs,omitempty"`
+	TimeoutMS       int  `json:"timeoutMs,omitempty"`
 }
 
 const (
@@ -39,7 +41,7 @@ func (c *Core) handleSyncOnce(ctx context.Context, payload []byte) ([]byte, erro
 	if req.TimeoutMS <= 0 {
 		req.TimeoutMS = defaultSyncTimeoutMS
 	}
-	if err := c.syncOnce(ctx, req.TimeoutMS, true); err != nil {
+	if err := c.syncOnce(ctx, req.TimeoutMS, req.BeeperStreaming, true); err != nil {
 		return nil, err
 	}
 	return c.empty()
@@ -97,7 +99,7 @@ func (c *Core) runSyncLoop(ctx context.Context, done chan struct{}, req MatrixSy
 	failures := 0
 	for {
 		c.syncMu.Lock()
-		err := c.syncOnce(ctx, req.TimeoutMS, false)
+		err := c.syncOnce(ctx, req.TimeoutMS, req.BeeperStreaming, false)
 		c.syncMu.Unlock()
 		if err == nil {
 			failures = 0
@@ -131,7 +133,7 @@ func (c *Core) runSyncLoop(ctx context.Context, done chan struct{}, req MatrixSy
 	}
 }
 
-func (c *Core) syncOnce(ctx context.Context, timeoutMS int, emitFailure bool) error {
+func (c *Core) syncOnce(ctx context.Context, timeoutMS int, beeperStreaming bool, emitFailure bool) error {
 	started := time.Now()
 
 	cli, err := c.requireClient()
@@ -152,7 +154,7 @@ func (c *Core) syncOnce(ctx context.Context, timeoutMS int, emitFailure bool) er
 			FilterID:        filterID,
 			FullState:       false,
 			SetPresence:     event.PresenceOffline,
-			BeeperStreaming: true,
+			BeeperStreaming: beeperStreaming,
 		})
 	})
 	if err != nil {

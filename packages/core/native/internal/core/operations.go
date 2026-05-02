@@ -51,8 +51,16 @@ const (
 	opUploadEncryptedMedia = "upload_encrypted_media"
 	// ts:operation downloadEncryptedMedia download_encrypted_media MatrixDownloadEncryptedMediaOptions MatrixDownloadMediaResult
 	opDownloadEncryptedMedia = "download_encrypted_media"
+	// ts:operation createRoom create_room MatrixCreateRoomOptions MatrixCreateRoomResult
+	opCreateRoom = "create_room"
 	// ts:operation fetchRoom fetch_room MatrixFetchRoomOptions MatrixRoomInfo
 	opFetchRoom = "fetch_room"
+	// ts:operation fetchRoomState fetch_room_state MatrixFetchRoomStateOptions MatrixFetchRoomStateResult
+	opFetchRoomState = "fetch_room_state"
+	// ts:operation fetchRoomStateEvent fetch_room_state_event MatrixFetchRoomStateEventOptions MatrixRoomStateEvent
+	opFetchRoomStateEvent = "fetch_room_state_event"
+	// ts:operation sendRoomStateEvent send_room_state_event MatrixSendRoomStateEventOptions MatrixRawMessage
+	opSendRoomStateEvent = "send_room_state_event"
 	// ts:operation openDM open_dm MatrixOpenDMOptions MatrixOpenDMResult
 	opOpenDM = "open_dm"
 	// ts:operation joinRoom join_room MatrixJoinRoomOptions MatrixJoinRoomResult
@@ -61,10 +69,26 @@ const (
 	opLeaveRoom = "leave_room"
 	// ts:operation inviteUser invite_user MatrixInviteUserOptions void
 	opInviteUser = "invite_user"
+	// ts:operation fetchRoomMembers fetch_room_members MatrixFetchRoomMembersOptions MatrixRoomMembersResult
+	opFetchRoomMembers = "fetch_room_members"
+	// ts:operation kickUser kick_user MatrixKickUserOptions void
+	opKickUser = "kick_user"
+	// ts:operation banUser ban_user MatrixBanUserOptions void
+	opBanUser = "ban_user"
+	// ts:operation unbanUser unban_user MatrixUnbanUserOptions void
+	opUnbanUser = "unban_user"
 	// ts:operation fetchJoinedRooms fetch_joined_rooms - MatrixJoinedRoomsResult
 	opFetchJoinedRooms = "fetch_joined_rooms"
 	// ts:operation getUser get_user MatrixGetUserOptions MatrixUserInfo
 	opGetUser = "get_user"
+	// ts:operation getOwnDisplayName get_own_display_name - MatrixOwnDisplayNameResult
+	opGetOwnDisplayName = "get_own_display_name"
+	// ts:operation setOwnDisplayName set_own_display_name MatrixSetOwnDisplayNameOptions void
+	opSetOwnDisplayName = "set_own_display_name"
+	// ts:operation getOwnAvatarURL get_own_avatar_url - MatrixOwnAvatarURLResult
+	opGetOwnAvatarURL = "get_own_avatar_url"
+	// ts:operation setOwnAvatarURL set_own_avatar_url MatrixSetOwnAvatarURLOptions void
+	opSetOwnAvatarURL = "set_own_avatar_url"
 	// ts:operation listRoomThreads list_room_threads MatrixListRoomThreadsOptions MatrixListRoomThreadsResult
 	opListRoomThreads = "list_room_threads"
 	// ts:operation close close - void

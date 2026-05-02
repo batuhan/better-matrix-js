@@ -2,10 +2,13 @@
 
 import type {
   MatrixApplySyncResponseOptions,
+  MatrixBanUserOptions,
   MatrixBeeperStreamOptions,
   MatrixCoreInitOptions,
   MatrixCreateBeeperStreamOptions,
   MatrixCreateBeeperStreamResult,
+  MatrixCreateRoomOptions,
+  MatrixCreateRoomResult,
   MatrixDeleteMessageOptions,
   MatrixDownloadEncryptedMediaOptions,
   MatrixDownloadMediaOptions,
@@ -15,28 +18,41 @@ import type {
   MatrixFetchMessageResult,
   MatrixFetchMessagesOptions,
   MatrixFetchMessagesResult,
+  MatrixFetchRoomMembersOptions,
   MatrixFetchRoomOptions,
+  MatrixFetchRoomStateEventOptions,
+  MatrixFetchRoomStateOptions,
+  MatrixFetchRoomStateResult,
   MatrixGetUserOptions,
   MatrixInviteUserOptions,
   MatrixJoinRoomOptions,
   MatrixJoinRoomResult,
   MatrixJoinedRoomsResult,
+  MatrixKickUserOptions,
   MatrixLeaveRoomOptions,
   MatrixListRoomThreadsOptions,
   MatrixListRoomThreadsResult,
   MatrixMarkReadOptions,
   MatrixOpenDMOptions,
   MatrixOpenDMResult,
+  MatrixOwnAvatarURLResult,
+  MatrixOwnDisplayNameResult,
   MatrixRawMessage,
   MatrixReactionOptions,
   MatrixRegisterBeeperStreamOptions,
   MatrixRoomInfo,
+  MatrixRoomMembersResult,
+  MatrixRoomStateEvent,
   MatrixSendEphemeralEventOptions,
   MatrixSendMediaMessageOptions,
   MatrixSendMessageOptions,
+  MatrixSendRoomStateEventOptions,
+  MatrixSetOwnAvatarURLOptions,
+  MatrixSetOwnDisplayNameOptions,
   MatrixSyncOnceOptions,
   MatrixSyncStartOptions,
   MatrixTypingOptions,
+  MatrixUnbanUserOptions,
   MatrixUploadEncryptedMediaResult,
   MatrixUploadMediaOptions,
   MatrixUploadMediaResult,
@@ -70,13 +86,25 @@ export interface MatrixCoreOperations {
   downloadMedia(options: MatrixDownloadMediaOptions): Promise<MatrixDownloadMediaResult>;
   uploadEncryptedMedia(options: MatrixUploadMediaOptions): Promise<MatrixUploadEncryptedMediaResult>;
   downloadEncryptedMedia(options: MatrixDownloadEncryptedMediaOptions): Promise<MatrixDownloadMediaResult>;
+  createRoom(options: MatrixCreateRoomOptions): Promise<MatrixCreateRoomResult>;
   fetchRoom(options: MatrixFetchRoomOptions): Promise<MatrixRoomInfo>;
+  fetchRoomState(options: MatrixFetchRoomStateOptions): Promise<MatrixFetchRoomStateResult>;
+  fetchRoomStateEvent(options: MatrixFetchRoomStateEventOptions): Promise<MatrixRoomStateEvent>;
+  sendRoomStateEvent(options: MatrixSendRoomStateEventOptions): Promise<MatrixRawMessage>;
   openDM(options: MatrixOpenDMOptions): Promise<MatrixOpenDMResult>;
   joinRoom(options: MatrixJoinRoomOptions): Promise<MatrixJoinRoomResult>;
   leaveRoom(options: MatrixLeaveRoomOptions): Promise<void>;
   inviteUser(options: MatrixInviteUserOptions): Promise<void>;
+  fetchRoomMembers(options: MatrixFetchRoomMembersOptions): Promise<MatrixRoomMembersResult>;
+  kickUser(options: MatrixKickUserOptions): Promise<void>;
+  banUser(options: MatrixBanUserOptions): Promise<void>;
+  unbanUser(options: MatrixUnbanUserOptions): Promise<void>;
   fetchJoinedRooms(): Promise<MatrixJoinedRoomsResult>;
   getUser(options: MatrixGetUserOptions): Promise<MatrixUserInfo>;
+  getOwnDisplayName(): Promise<MatrixOwnDisplayNameResult>;
+  setOwnDisplayName(options: MatrixSetOwnDisplayNameOptions): Promise<void>;
+  getOwnAvatarURL(): Promise<MatrixOwnAvatarURLResult>;
+  setOwnAvatarURL(options: MatrixSetOwnAvatarURLOptions): Promise<void>;
   listRoomThreads(options: MatrixListRoomThreadsOptions): Promise<MatrixListRoomThreadsResult>;
   close(): Promise<void>;
 }
@@ -184,8 +212,24 @@ export abstract class MatrixCoreOperationCaller implements MatrixCoreOperations 
     return this.call<MatrixDownloadMediaResult>("download_encrypted_media", options);
   }
 
+  createRoom(options: MatrixCreateRoomOptions): Promise<MatrixCreateRoomResult> {
+    return this.call<MatrixCreateRoomResult>("create_room", options);
+  }
+
   fetchRoom(options: MatrixFetchRoomOptions): Promise<MatrixRoomInfo> {
     return this.call<MatrixRoomInfo>("fetch_room", options);
+  }
+
+  fetchRoomState(options: MatrixFetchRoomStateOptions): Promise<MatrixFetchRoomStateResult> {
+    return this.call<MatrixFetchRoomStateResult>("fetch_room_state", options);
+  }
+
+  fetchRoomStateEvent(options: MatrixFetchRoomStateEventOptions): Promise<MatrixRoomStateEvent> {
+    return this.call<MatrixRoomStateEvent>("fetch_room_state_event", options);
+  }
+
+  sendRoomStateEvent(options: MatrixSendRoomStateEventOptions): Promise<MatrixRawMessage> {
+    return this.call<MatrixRawMessage>("send_room_state_event", options);
   }
 
   openDM(options: MatrixOpenDMOptions): Promise<MatrixOpenDMResult> {
@@ -204,12 +248,44 @@ export abstract class MatrixCoreOperationCaller implements MatrixCoreOperations 
     return this.call<void>("invite_user", options);
   }
 
+  fetchRoomMembers(options: MatrixFetchRoomMembersOptions): Promise<MatrixRoomMembersResult> {
+    return this.call<MatrixRoomMembersResult>("fetch_room_members", options);
+  }
+
+  kickUser(options: MatrixKickUserOptions): Promise<void> {
+    return this.call<void>("kick_user", options);
+  }
+
+  banUser(options: MatrixBanUserOptions): Promise<void> {
+    return this.call<void>("ban_user", options);
+  }
+
+  unbanUser(options: MatrixUnbanUserOptions): Promise<void> {
+    return this.call<void>("unban_user", options);
+  }
+
   fetchJoinedRooms(): Promise<MatrixJoinedRoomsResult> {
     return this.call<MatrixJoinedRoomsResult>("fetch_joined_rooms");
   }
 
   getUser(options: MatrixGetUserOptions): Promise<MatrixUserInfo> {
     return this.call<MatrixUserInfo>("get_user", options);
+  }
+
+  getOwnDisplayName(): Promise<MatrixOwnDisplayNameResult> {
+    return this.call<MatrixOwnDisplayNameResult>("get_own_display_name");
+  }
+
+  setOwnDisplayName(options: MatrixSetOwnDisplayNameOptions): Promise<void> {
+    return this.call<void>("set_own_display_name", options);
+  }
+
+  getOwnAvatarURL(): Promise<MatrixOwnAvatarURLResult> {
+    return this.call<MatrixOwnAvatarURLResult>("get_own_avatar_url");
+  }
+
+  setOwnAvatarURL(options: MatrixSetOwnAvatarURLOptions): Promise<void> {
+    return this.call<void>("set_own_avatar_url", options);
   }
 
   listRoomThreads(options: MatrixListRoomThreadsOptions): Promise<MatrixListRoomThreadsResult> {
