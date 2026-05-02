@@ -81,7 +81,7 @@
 - [x] Split `packages/core/src/client.ts` public interfaces into `client-types.ts`.
 - [x] Split `packages/core/src/client.ts` event normalization into `events.ts`.
 - [x] Split `packages/core/src/client.ts` streaming orchestration into `streams.ts`.
-- [ ] Continue shrinking `packages/core/src/client.ts` by moving media byte helpers if it keeps growing.
+- [x] Continue shrinking `packages/core/src/client.ts` by moving media byte helpers if it keeps growing.
 - [ ] Keep card/action support fallback-only unless Beeper interactive product scope is explicitly added.
 - [x] Document unsupported Chat SDK features: native modals and native scheduled messages.
 

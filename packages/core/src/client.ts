@@ -1,4 +1,3 @@
-import { base64ToBytes, bytesToBase64 } from "./bytes";
 import type {
   MatrixBeeper,
   MatrixClient,
@@ -14,6 +13,7 @@ import type {
   MatrixUsers,
 } from "./client-types";
 import { toClientEvent, toCryptoStatusSnapshot, toMessageEvent } from "./events";
+import { createMatrixMedia, postMediaMessageBytes } from "./media";
 import { stripUndefined } from "./object";
 import type { MatrixCore, MatrixCoreEvent, MatrixCoreHost } from "./runtime-types";
 import { createMatrixStreams } from "./streams";
@@ -22,11 +22,6 @@ import type {
   MatrixClientOptions,
   MatrixThreadSummary,
   MatrixWhoami,
-  SendMediaMessageOptions,
-  SentEvent,
-  UploadEncryptedMediaResult,
-  UploadMediaOptions,
-  UploadMediaResult,
 } from "./types";
 import { loadMatrixCore, type LoadMatrixCoreOptions } from "./wasm";
 
@@ -129,7 +124,7 @@ class DefaultMatrixClient implements MatrixClient {
           threadRootEventId: opts.threadRoot,
         })),
       sendMedia: (opts) =>
-        this.#postMediaMessageBytes(opts),
+        postMediaMessageBytes(this.#coreRequired(), opts),
     };
     this.reactions = {
       redact: (opts) =>
@@ -145,34 +140,7 @@ class DefaultMatrixClient implements MatrixClient {
           roomId: opts.roomId,
         }),
     };
-    this.media = {
-      download: async (opts) => {
-        const core = this.#coreRequired();
-        if (core.callBytesResult && core.supportsByteCalls?.()) {
-          return { bytes: await core.callBytesResult("download_media_bytes", opts) };
-        }
-        const result = await core.downloadMedia(opts);
-        return { bytes: base64ToBytes(result.bytesBase64) };
-      },
-      downloadThumbnail: async (opts) => {
-        const core = this.#coreRequired();
-        if (core.callBytesResult && core.supportsByteCalls?.()) {
-          return { bytes: await core.callBytesResult("download_media_thumbnail_bytes", opts) };
-        }
-        const result = await core.downloadMediaThumbnail(opts);
-        return { bytes: base64ToBytes(result.bytesBase64) };
-      },
-      downloadEncrypted: async (opts) => {
-        const core = this.#coreRequired();
-        if (core.callBytesResult && core.supportsByteCalls?.()) {
-          return { bytes: await core.callBytesResult("download_encrypted_media_bytes", opts) };
-        }
-        const result = await core.downloadEncryptedMedia(opts);
-        return { bytes: base64ToBytes(result.bytesBase64) };
-      },
-      upload: (opts) => this.#uploadMediaBytes(opts),
-      uploadEncrypted: (opts) => this.#uploadEncryptedMediaBytes(opts),
-    };
+    this.media = createMatrixMedia(() => this.#coreRequired());
     this.rooms = {
       ban: (opts) => this.#coreRequired().banUser(opts),
       create: (opts) =>
@@ -268,50 +236,6 @@ class DefaultMatrixClient implements MatrixClient {
       setOwnAvatarUrl: (opts) => this.#coreRequired().setOwnAvatarURL(opts),
       setOwnDisplayName: (opts) => this.#coreRequired().setOwnDisplayName(opts),
     };
-  }
-
-  async #postMediaMessageBytes(opts: SendMediaMessageOptions): Promise<SentEvent> {
-    const payload = stripUndefined({
-      body: opts.caption,
-      contentType: opts.contentType,
-      duration: opts.duration,
-      filename: opts.filename,
-      height: opts.height,
-      msgtype: opts.kind ? `m.${opts.kind}` as "m.image" | "m.video" | "m.audio" | "m.file" : undefined,
-      roomId: opts.roomId,
-      size: opts.size,
-      threadRootEventId: opts.threadRoot,
-      width: opts.width,
-    });
-    const core = this.#coreRequired();
-    if (core.callBytesJson && core.supportsByteCalls?.()) {
-      return core.callBytesJson("post_media_message_bytes", payload, opts.bytes);
-    }
-    return core.postMediaMessage({ ...payload, bytesBase64: bytesToBase64(opts.bytes) });
-  }
-
-  async #uploadMediaBytes(opts: UploadMediaOptions): Promise<UploadMediaResult> {
-    const payload = stripUndefined({
-      contentType: opts.contentType,
-      filename: opts.filename,
-    });
-    const core = this.#coreRequired();
-    if (core.callBytesJson && core.supportsByteCalls?.()) {
-      return core.callBytesJson("upload_media_bytes", payload, opts.bytes);
-    }
-    return core.uploadMedia({ ...payload, bytesBase64: bytesToBase64(opts.bytes) });
-  }
-
-  async #uploadEncryptedMediaBytes(opts: UploadMediaOptions): Promise<UploadEncryptedMediaResult> {
-    const payload = stripUndefined({
-      contentType: opts.contentType,
-      filename: opts.filename,
-    });
-    const core = this.#coreRequired();
-    if (core.callBytesJson && core.supportsByteCalls?.()) {
-      return core.callBytesJson("upload_encrypted_media_bytes", payload, opts.bytes);
-    }
-    return core.uploadEncryptedMedia({ ...payload, bytesBase64: bytesToBase64(opts.bytes) });
   }
 
   async close(): Promise<void> {
