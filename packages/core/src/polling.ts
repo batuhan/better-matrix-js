@@ -1,6 +1,8 @@
 import type { MatrixCore } from "./types";
 
 export interface MatrixPollingOptions {
+  onError?: (error: unknown, details: { failures: number; nextRetryMs: number }) => void;
+  onStatus?: (status: { failures?: number; status: "syncing" | "synced" | "retrying" | "stopped" }) => void;
   retryDelayMs?: number;
   signal?: AbortSignal;
   timeoutMs?: number;
@@ -44,8 +46,10 @@ export function startMatrixPolling(
     let failures = 0;
     while (active && !signal.aborted) {
       try {
+        options.onStatus?.({ failures, status: "syncing" });
         await core.syncOnce({ timeoutMs: options.timeoutMs ?? DEFAULT_SYNC_TIMEOUT_MS });
         failures = 0;
+        options.onStatus?.({ status: "synced" });
       } catch (error) {
         if (signal.aborted) {
           return;
@@ -55,9 +59,12 @@ export function startMatrixPolling(
           (options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS) * 2 ** (failures - 1),
           MAX_RETRY_DELAY_MS
         );
+        options.onError?.(error, { failures, nextRetryMs: retryDelay });
+        options.onStatus?.({ failures, status: "retrying" });
         await sleep(retryDelay, signal);
       }
     }
+    options.onStatus?.({ status: "stopped" });
   })();
 
   return {

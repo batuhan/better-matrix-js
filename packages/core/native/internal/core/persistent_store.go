@@ -2,16 +2,25 @@ package core
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/crypto"
+	"maunium.net/go/mautrix/crypto/backup"
+	"maunium.net/go/mautrix/id"
 )
 
 const (
 	cryptoStoreFile       = "crypto.json"
 	decryptionQueuePrefix = "pending-decryption/"
+	recoveryBackupFile    = "recovery_backup.json"
 	stateStoreFile        = "state.json"
 	nextBatchFile         = "next_batch"
 )
@@ -27,6 +36,7 @@ type storeBundle struct {
 	CryptoStore crypto.Store
 	StateStore  mautrix.StateStore
 	kv          byteStore
+	pickleKey   []byte
 	prefix      string
 }
 
@@ -50,8 +60,105 @@ func newPersistentStoreBundle(ctx context.Context, kv byteStore, prefix string, 
 		CryptoStore: cryptoStore,
 		StateStore:  stateStore,
 		kv:          kv,
+		pickleKey:   pickleKey,
 		prefix:      prefix,
 	}, nil
+}
+
+type persistedRecoveryBackup struct {
+	Ciphertext      string `json:"ciphertext"`
+	Nonce           string `json:"nonce"`
+	RecoveryKeyHash string `json:"recoveryKeyHash"`
+	Version         string `json:"version,omitempty"`
+}
+
+func (bundle *storeBundle) LoadRecoveryBackup(ctx context.Context, recoveryKey string) (id.KeyBackupVersion, *backup.MegolmBackupKey, bool, error) {
+	if bundle == nil || bundle.kv == nil || recoveryKey == "" {
+		return "", nil, false, nil
+	}
+	raw, err := bundle.kv.Get(ctx, bundle.prefix+recoveryBackupFile)
+	if err != nil || raw == nil {
+		return "", nil, false, err
+	}
+	var persisted persistedRecoveryBackup
+	if err := json.Unmarshal(raw, &persisted); err != nil {
+		return "", nil, false, err
+	}
+	if persisted.RecoveryKeyHash != recoveryKeyHash(recoveryKey) {
+		return "", nil, false, nil
+	}
+	keyBytes, err := bundle.openRecoveryBackup(persisted)
+	if err != nil {
+		return "", nil, false, err
+	}
+	backupKey, err := backup.MegolmBackupKeyFromBytes(keyBytes)
+	if err != nil {
+		return "", nil, false, err
+	}
+	return id.KeyBackupVersion(persisted.Version), backupKey, true, nil
+}
+
+func (bundle *storeBundle) SaveRecoveryBackup(ctx context.Context, recoveryKey string, version id.KeyBackupVersion, backupKey *backup.MegolmBackupKey) error {
+	if bundle == nil || bundle.kv == nil || recoveryKey == "" || backupKey == nil {
+		return nil
+	}
+	persisted, err := bundle.sealRecoveryBackup(recoveryKey, version, backupKey.Bytes())
+	if err != nil {
+		return err
+	}
+	raw, err := json.Marshal(persisted)
+	if err != nil {
+		return err
+	}
+	return bundle.kv.Set(ctx, bundle.prefix+recoveryBackupFile, raw)
+}
+
+func (bundle *storeBundle) sealRecoveryBackup(recoveryKey string, version id.KeyBackupVersion, keyBytes []byte) (persistedRecoveryBackup, error) {
+	aead, err := bundle.recoveryBackupAEAD()
+	if err != nil {
+		return persistedRecoveryBackup{}, err
+	}
+	nonce := make([]byte, aead.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return persistedRecoveryBackup{}, err
+	}
+	ciphertext := aead.Seal(nil, nonce, keyBytes, nil)
+	return persistedRecoveryBackup{
+		Ciphertext:      base64.RawStdEncoding.EncodeToString(ciphertext),
+		Nonce:           base64.RawStdEncoding.EncodeToString(nonce),
+		RecoveryKeyHash: recoveryKeyHash(recoveryKey),
+		Version:         version.String(),
+	}, nil
+}
+
+func (bundle *storeBundle) openRecoveryBackup(persisted persistedRecoveryBackup) ([]byte, error) {
+	aead, err := bundle.recoveryBackupAEAD()
+	if err != nil {
+		return nil, err
+	}
+	nonce, err := base64.RawStdEncoding.DecodeString(persisted.Nonce)
+	if err != nil {
+		return nil, err
+	}
+	ciphertext, err := base64.RawStdEncoding.DecodeString(persisted.Ciphertext)
+	if err != nil {
+		return nil, err
+	}
+	return aead.Open(nil, nonce, ciphertext, nil)
+}
+
+func (bundle *storeBundle) recoveryBackupAEAD() (cipher.AEAD, error) {
+	seed := sha256.Sum256(append([]byte("better-matrix-js recovery backup cache\x00"), bundle.pickleKey...))
+	block, err := aes.NewCipher(seed[:])
+	if err != nil {
+		return nil, err
+	}
+	return cipher.NewGCM(block)
+}
+
+func recoveryKeyHash(recoveryKey string) string {
+	hash := sha256.Sum256([]byte(recoveryKey))
+	return base64.RawStdEncoding.EncodeToString(hash[:])
 }
 
 func (bundle *storeBundle) LoadNextBatch(ctx context.Context) (string, error) {

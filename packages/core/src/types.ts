@@ -23,11 +23,27 @@ export interface MatrixLoginSession {
 
 export interface MatrixCoreInitOptions {
   accessToken: string;
+  /**
+   * Deprecated compatibility switch. Prefer initialSyncMode.
+   * false maps to "latest"; true maps to "catch_up".
+   */
   catchUpOnStart?: boolean;
+  deviceId?: string;
   homeserverUrl: string;
+  /**
+   * Startup cursor policy:
+   * - "persisted": use the stored sync cursor when present; otherwise start at latest.
+   * - "latest": establish a fresh live cursor with no timeline history.
+   * - "catch_up": process from the stored cursor, or initial history if no cursor exists.
+   */
+  initialSyncMode?: "persisted" | "latest" | "catch_up";
+  /** Explicit Matrix /sync since token. Overrides the persisted cursor when set. */
+  initialSyncSince?: string;
   pickleKey?: string;
   recoveryCode?: string;
   recoveryKey?: string;
+  userId?: string;
+  verifyRecoveryOnStart?: boolean;
 }
 
 export interface MatrixWhoami {
@@ -102,6 +118,9 @@ export type MatrixCoreEvent =
       status:
         | "enabled"
         | "key_backup_unavailable"
+        | "recovery_cache_unavailable"
+        | "recovery_key_cached"
+        | "recovery_key_loaded"
         | "recovery_restored"
         | "recovery_unverified";
       type: "crypto_status";
@@ -112,7 +131,15 @@ export type MatrixCoreEvent =
       type: "decryption_error";
     }
   | { error: string; type: "error" }
-  | { status: "initialized" | "syncing" | "stopped"; type: "sync_status" };
+  | {
+      durationMs?: number;
+      error?: string;
+      failures?: number;
+      nextRetryMs?: number;
+      status: "initialized" | "init_step" | "syncing" | "synced" | "retrying" | "stopped";
+      step?: string;
+      type: "sync_status";
+    };
 
 export interface MatrixSendMessageOptions {
   body: string;

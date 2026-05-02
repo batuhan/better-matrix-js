@@ -144,14 +144,32 @@ export class MatrixAdapter {
       accessToken: this.#config.accessToken,
       homeserverUrl: this.#config.homeserverUrl,
     };
+    if (this.#config.catchUpOnStart !== undefined) {
+      initOptions.catchUpOnStart = this.#config.catchUpOnStart;
+    }
     if (this.#config.pickleKey) {
       initOptions.pickleKey = this.#config.pickleKey;
+    }
+    if (this.#config.deviceId) {
+      initOptions.deviceId = this.#config.deviceId;
+    }
+    if (this.#config.initialSyncMode) {
+      initOptions.initialSyncMode = this.#config.initialSyncMode;
+    }
+    if (this.#config.initialSyncSince) {
+      initOptions.initialSyncSince = this.#config.initialSyncSince;
     }
     if (this.#config.recoveryKey) {
       initOptions.recoveryKey = this.#config.recoveryKey;
     }
     if (this.#config.recoveryCode) {
       initOptions.recoveryCode = this.#config.recoveryCode;
+    }
+    if (this.#config.verifyRecoveryOnStart !== undefined) {
+      initOptions.verifyRecoveryOnStart = this.#config.verifyRecoveryOnStart;
+    }
+    if (this.#config.userId) {
+      initOptions.userId = this.#config.userId;
     }
     const whoami = await this.#core.init(initOptions);
     this.#userId = whoami.userId;
@@ -165,6 +183,12 @@ export class MatrixAdapter {
       if (this.#config.polling?.timeoutMs !== undefined) {
         pollingOptions.timeoutMs = this.#config.polling.timeoutMs;
       }
+      pollingOptions.onError = (error, details) => {
+        this.#logger.warn("Matrix polling retrying", { error, ...details });
+      };
+      pollingOptions.onStatus = (status) => {
+        this.#logger.debug("Matrix polling status", status);
+      };
       this.#polling = startMatrixPolling(this.#core, pollingOptions);
     }
   }
@@ -673,6 +697,8 @@ export class MatrixAdapter {
       this.#logger.debug("Matrix crypto status", event);
     } else if (event.type === "decryption_error") {
       this.#logger.debug("Matrix decryption error", { error: event.error, event: event.event });
+    } else if (event.type === "sync_status") {
+      this.#logger.debug("Matrix sync status", event);
     } else if (event.type === "error") {
       this.#logger.warn("Matrix core error", { error: event.error });
     }

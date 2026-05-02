@@ -66,6 +66,9 @@ declare global {
 const listenersByCore = new Map<string, Set<(event: MatrixCoreEvent) => void>>();
 let runtimeBoot: Promise<void> | null = null;
 let emitDispatcherInstalled = false;
+let coreFactoryHooksInstalled = false;
+let coreFactoryReadyPromise: Promise<void> | null = null;
+let resolveCoreFactoryReady: (() => void) | null = null;
 
 export interface LoadMatrixCoreOptions {
   go?: GoRuntime;
@@ -301,13 +304,53 @@ async function resolveWasmModule(options: LoadMatrixCoreOptions): Promise<WebAss
 }
 
 async function waitForCoreFactory(): Promise<void> {
-  for (let i = 0; i < 100; i += 1) {
-    if (globalThis.__matrixCoreCreate && globalThis.__matrixCoreCall) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10));
+  installCoreFactoryReadyHooks();
+  if (isCoreFactoryReady()) {
+    return;
   }
-  throw new Error("Matrix WASM core did not register its RPC functions");
+  coreFactoryReadyPromise ??= new Promise((resolve) => {
+    resolveCoreFactoryReady = resolve;
+  });
+  await coreFactoryReadyPromise;
+}
+
+function isCoreFactoryReady(): boolean {
+  return Boolean(globalThis.__matrixCoreCreate && globalThis.__matrixCoreCall);
+}
+
+function installCoreFactoryReadyHooks(): void {
+  if (coreFactoryHooksInstalled || isCoreFactoryReady()) {
+    return;
+  }
+  coreFactoryHooksInstalled = true;
+
+  let create = globalThis.__matrixCoreCreate;
+  let call = globalThis.__matrixCoreCall;
+
+  Object.defineProperty(globalThis, "__matrixCoreCreate", {
+    configurable: true,
+    get: () => create,
+    set(value) {
+      create = value;
+      notifyCoreFactoryReady();
+    },
+  });
+  Object.defineProperty(globalThis, "__matrixCoreCall", {
+    configurable: true,
+    get: () => call,
+    set(value) {
+      call = value;
+      notifyCoreFactoryReady();
+    },
+  });
+}
+
+function notifyCoreFactoryReady(): void {
+  if (!isCoreFactoryReady()) {
+    return;
+  }
+  resolveCoreFactoryReady?.();
+  resolveCoreFactoryReady = null;
 }
 
 function installEmitDispatcher(): void {

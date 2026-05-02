@@ -115,6 +115,30 @@ function makeCore(overrides: Partial<MatrixCore> = {}) {
 }
 
 describe("MatrixAdapter", () => {
+  it("passes fast startup cursor options to the Matrix core", async () => {
+    const { core } = makeCore();
+    const adapter = new MatrixAdapter({
+      accessToken: "token",
+      core,
+      deviceId: "DEVICE",
+      homeserverUrl: "https://matrix.example.com",
+      initialSyncMode: "persisted",
+      initialSyncSince: "s123",
+      polling: { enabled: false },
+      userId: "@bot:example.com",
+    });
+    await adapter.initialize(makeChat());
+
+    expect(core.init).toHaveBeenCalledWith({
+      accessToken: "token",
+      deviceId: "DEVICE",
+      homeserverUrl: "https://matrix.example.com",
+      initialSyncMode: "persisted",
+      initialSyncSince: "s123",
+      userId: "@bot:example.com",
+    });
+  });
+
   it("parses Matrix formatted HTML and m.mentions into Chat SDK messages", async () => {
     const { core } = makeCore();
     const adapter = new MatrixAdapter({

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/beeperstream"
@@ -17,12 +18,17 @@ import (
 )
 
 type initReq struct {
-	HomeserverURL  string `json:"homeserverUrl"`
-	AccessToken    string `json:"accessToken"`
-	CatchUpOnStart bool   `json:"catchUpOnStart,omitempty"`
-	RecoveryCode   string `json:"recoveryCode,omitempty"`
-	RecoveryKey    string `json:"recoveryKey,omitempty"`
-	PickleKey      string `json:"pickleKey,omitempty"`
+	AccessToken           string `json:"accessToken"`
+	CatchUpOnStart        *bool  `json:"catchUpOnStart,omitempty"`
+	DeviceID              string `json:"deviceId,omitempty"`
+	HomeserverURL         string `json:"homeserverUrl"`
+	InitialSyncMode       string `json:"initialSyncMode,omitempty"`
+	InitialSyncSince      string `json:"initialSyncSince,omitempty"`
+	PickleKey             string `json:"pickleKey,omitempty"`
+	RecoveryCode          string `json:"recoveryCode,omitempty"`
+	RecoveryKey           string `json:"recoveryKey,omitempty"`
+	UserID                string `json:"userId,omitempty"`
+	VerifyRecoveryOnStart bool   `json:"verifyRecoveryOnStart,omitempty"`
 }
 
 type whoamiResp struct {
@@ -31,6 +37,7 @@ type whoamiResp struct {
 }
 
 func (c *Core) handleInit(ctx context.Context, payload []byte) ([]byte, error) {
+	initStarted := time.Now()
 	var req initReq
 	if err := json.Unmarshal(payload, &req); err != nil {
 		return nil, err
@@ -38,23 +45,35 @@ func (c *Core) handleInit(ctx context.Context, payload []byte) ([]byte, error) {
 	if req.RecoveryKey == "" {
 		req.RecoveryKey = req.RecoveryCode
 	}
+	c.emitInitStep("start", initStarted)
 	cli, err := mautrix.NewClient(req.HomeserverURL, "", req.AccessToken)
 	if err != nil {
 		return nil, err
 	}
 	configureHTTPClient(cli, c.host)
-	resp, err := cli.Whoami(ctx)
-	if err != nil {
-		return nil, err
+	var resp whoamiResp
+	if req.UserID != "" && req.DeviceID != "" {
+		cli.UserID = id.UserID(req.UserID)
+		cli.DeviceID = id.DeviceID(req.DeviceID)
+		resp = whoamiResp{UserID: req.UserID, DeviceID: req.DeviceID}
+		c.emitInitStep("whoami_cached", initStarted)
+	} else {
+		whoami, err := cli.Whoami(ctx)
+		if err != nil {
+			return nil, err
+		}
+		c.emitInitStep("whoami", initStarted)
+		cli.UserID = whoami.UserID
+		cli.DeviceID = whoami.DeviceID
+		resp = whoamiResp{UserID: whoami.UserID.String(), DeviceID: whoami.DeviceID.String()}
 	}
-	cli.UserID = resp.UserID
-	cli.DeviceID = resp.DeviceID
 
 	c.pickleKey = c.resolvePickleKey(req)
-	stores, err := loadStoreBundle(ctx, c.host, req.HomeserverURL, resp.UserID, resp.DeviceID, c.pickleKey)
+	stores, err := loadStoreBundle(ctx, c.host, req.HomeserverURL, cli.UserID, cli.DeviceID, c.pickleKey)
 	if err != nil {
 		return nil, err
 	}
+	c.emitInitStep("stores_loaded", initStarted)
 	cli.StateStore = stores.StateStore
 
 	c.client = cli
@@ -70,33 +89,120 @@ func (c *Core) handleInit(ctx context.Context, payload []byte) ([]byte, error) {
 	c.pendingDecryptions = nil
 	c.reactions = make(map[id.EventID]reactionSnapshot)
 	c.stores = stores
-	c.userID = resp.UserID
-	c.deviceID = resp.DeviceID
+	c.userID = cli.UserID
+	c.deviceID = cli.DeviceID
 	c.cryptoStatus = "disabled"
-	if c.nextBatch, err = stores.LoadNextBatch(ctx); err != nil {
+	storedNextBatch, err := stores.LoadNextBatch(ctx)
+	if err != nil {
 		return nil, err
 	}
-	if err := c.loadPendingDecryptions(ctx); err != nil {
+	syncPlan := resolveStartupSyncPlan(req, storedNextBatch)
+	c.nextBatch = syncPlan.nextBatch
+	c.skipNextSync = syncPlan.skipNextSync
+	c.emit(OutboundEvent{
+		"type":         "sync_status",
+		"status":       "init_step",
+		"step":         "sync_cursor",
+		"durationMs":   time.Since(initStarted).Milliseconds(),
+		"cursorSource": syncPlan.cursorSource,
+		"skipTimeline": syncPlan.skipNextSync,
+	})
+	if syncPlan.loadPendingDecryptions {
+		if err := c.loadPendingDecryptions(ctx); err != nil {
+			return nil, err
+		}
+	} else if err := c.savePendingDecryptions(ctx); err != nil {
 		return nil, err
 	}
 
 	if err := c.setupCrypto(ctx, req); err != nil {
 		return nil, err
 	}
+	c.emitInitStep("crypto_ready", initStarted)
 	if err := c.setupBeeperStream(); err != nil {
 		return nil, err
 	}
-	c.skipNextSync = !req.CatchUpOnStart
-	if c.nextBatch == "" {
-		c.skipNextSync = true
-	}
-	if c.skipNextSync && len(c.pendingDecryptions) > 0 {
-		c.pendingDecryptions = nil
-		_ = c.savePendingDecryptions(ctx)
+	c.emitInitStep("beeper_stream_ready", initStarted)
+	c.emit(OutboundEvent{"type": "sync_status", "status": "initialized", "durationMs": time.Since(initStarted).Milliseconds()})
+	return json.Marshal(resp)
+}
+
+type startupSyncPlan struct {
+	cursorSource           string
+	loadPendingDecryptions bool
+	nextBatch              string
+	skipNextSync           bool
+}
+
+func resolveStartupSyncPlan(req initReq, storedNextBatch string) startupSyncPlan {
+	if req.InitialSyncSince != "" {
+		return startupSyncPlan{
+			cursorSource:           "provided",
+			loadPendingDecryptions: true,
+			nextBatch:              req.InitialSyncSince,
+			skipNextSync:           false,
+		}
 	}
 
-	c.emit(OutboundEvent{"type": "sync_status", "status": "initialized"})
-	return json.Marshal(whoamiResp{UserID: resp.UserID.String(), DeviceID: resp.DeviceID.String()})
+	mode := req.InitialSyncMode
+	if mode == "" {
+		mode = "persisted"
+	}
+	if req.CatchUpOnStart != nil {
+		if *req.CatchUpOnStart {
+			mode = "catch_up"
+		} else {
+			mode = "latest"
+		}
+	}
+
+	switch mode {
+	case "catch_up":
+		return startupSyncPlan{
+			cursorSource:           cursorSource(storedNextBatch, "stored", "initial"),
+			loadPendingDecryptions: true,
+			nextBatch:              storedNextBatch,
+			skipNextSync:           false,
+		}
+	case "latest", "boot", "live":
+		return startupSyncPlan{
+			cursorSource:           cursorSource(storedNextBatch, "stored_latest", "latest"),
+			loadPendingDecryptions: false,
+			nextBatch:              storedNextBatch,
+			skipNextSync:           true,
+		}
+	default:
+		if storedNextBatch != "" {
+			return startupSyncPlan{
+				cursorSource:           "stored",
+				loadPendingDecryptions: true,
+				nextBatch:              storedNextBatch,
+				skipNextSync:           false,
+			}
+		}
+		return startupSyncPlan{
+			cursorSource:           "latest",
+			loadPendingDecryptions: false,
+			nextBatch:              "",
+			skipNextSync:           true,
+		}
+	}
+}
+
+func cursorSource(cursor, present, missing string) string {
+	if cursor == "" {
+		return missing
+	}
+	return present
+}
+
+func (c *Core) emitInitStep(step string, started time.Time) {
+	c.emit(OutboundEvent{
+		"type":       "sync_status",
+		"status":     "init_step",
+		"step":       step,
+		"durationMs": time.Since(started).Milliseconds(),
+	})
 }
 
 func (c *Core) setupBeeperStream() error {
@@ -174,17 +280,23 @@ func (c *Core) setupCrypto(ctx context.Context, req initReq) error {
 	c.emit(OutboundEvent{"type": "crypto_status", "status": "enabled"})
 
 	if req.RecoveryKey != "" {
-		backupVersion, backupKey, err := c.verifyWithRecovery(ctx, helper.Machine(), req.RecoveryKey)
+		backupVersion, backupKey, err := c.loadRecoveryBackup(ctx, helper.Machine(), req.RecoveryKey, req.VerifyRecoveryOnStart)
 		if err != nil {
 			return err
 		}
 		c.backupVersion = backupVersion
 		c.backupKey = backupKey
-		c.emit(OutboundEvent{
-			"type":             "crypto_status",
-			"status":           "recovery_restored",
-			"keyBackupVersion": backupVersion.String(),
-		})
+		if backupKey != nil {
+			status := "recovery_key_loaded"
+			if req.VerifyRecoveryOnStart {
+				status = "recovery_restored"
+			}
+			c.emit(OutboundEvent{
+				"type":             "crypto_status",
+				"status":           status,
+				"keyBackupVersion": backupVersion.String(),
+			})
+		}
 	}
 
 	syncer.OnEvent(func(ctx context.Context, evt *event.Event) {
@@ -193,7 +305,17 @@ func (c *Core) setupCrypto(ctx context.Context, req initReq) error {
 	return nil
 }
 
-func (c *Core) verifyWithRecovery(ctx context.Context, mach *crypto.OlmMachine, code string) (id.KeyBackupVersion, *backup.MegolmBackupKey, error) {
+func (c *Core) loadRecoveryBackup(ctx context.Context, mach *crypto.OlmMachine, code string, verifyIdentity bool) (id.KeyBackupVersion, *backup.MegolmBackupKey, error) {
+	if !verifyIdentity && c.stores != nil {
+		version, backupKey, ok, err := c.stores.LoadRecoveryBackup(ctx, code)
+		if err != nil {
+			c.emit(OutboundEvent{"type": "crypto_status", "status": "recovery_cache_unavailable", "error": err.Error()})
+		} else if ok {
+			c.emit(OutboundEvent{"type": "crypto_status", "status": "recovery_key_cached", "keyBackupVersion": version.String()})
+			return version, backupKey, nil
+		}
+	}
+
 	keyID, keyData, err := mach.SSSS.GetDefaultKeyData(ctx)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to get default SSSS key data: %w", err)
@@ -207,14 +329,16 @@ func (c *Core) verifyWithRecovery(ctx context.Context, mach *crypto.OlmMachine, 
 	} else if err != nil {
 		return "", nil, fmt.Errorf("failed to verify Matrix recovery code: %w", err)
 	}
-	if err := mach.FetchCrossSigningKeysFromSSSS(ctx, key); err != nil {
-		return "", nil, fmt.Errorf("failed to fetch cross-signing keys from SSSS: %w", err)
-	}
-	if err := mach.SignOwnDevice(ctx, mach.OwnIdentity()); err != nil {
-		return "", nil, fmt.Errorf("failed to sign own device: %w", err)
-	}
-	if err := mach.SignOwnMasterKey(ctx); err != nil {
-		return "", nil, fmt.Errorf("failed to sign own master key: %w", err)
+	if verifyIdentity {
+		if err := mach.FetchCrossSigningKeysFromSSSS(ctx, key); err != nil {
+			return "", nil, fmt.Errorf("failed to fetch cross-signing keys from SSSS: %w", err)
+		}
+		if err := mach.SignOwnDevice(ctx, mach.OwnIdentity()); err != nil {
+			return "", nil, fmt.Errorf("failed to sign own device: %w", err)
+		}
+		if err := mach.SignOwnMasterKey(ctx); err != nil {
+			return "", nil, fmt.Errorf("failed to sign own master key: %w", err)
+		}
 	}
 
 	data, err := mach.SSSS.GetDecryptedAccountData(ctx, event.AccountDataMegolmBackupKey, key)
@@ -227,6 +351,12 @@ func (c *Core) verifyWithRecovery(ctx context.Context, mach *crypto.OlmMachine, 
 		c.emit(OutboundEvent{"type": "crypto_status", "status": "key_backup_unavailable", "error": err.Error()})
 		return "", nil, nil
 	}
+	if c.stores != nil {
+		_ = c.stores.SaveRecoveryBackup(ctx, code, "", backupKey)
+	}
+	if !verifyIdentity {
+		return "", backupKey, nil
+	}
 	versionInfo, err := mach.GetAndVerifyLatestKeyBackupVersion(ctx, backupKey)
 	if err != nil || versionInfo == nil {
 		errorMessage := "no verified key backup version found"
@@ -235,6 +365,9 @@ func (c *Core) verifyWithRecovery(ctx context.Context, mach *crypto.OlmMachine, 
 		}
 		c.emit(OutboundEvent{"type": "crypto_status", "status": "key_backup_unavailable", "error": errorMessage})
 		return "", backupKey, nil
+	}
+	if c.stores != nil {
+		_ = c.stores.SaveRecoveryBackup(ctx, code, versionInfo.Version, backupKey)
 	}
 	return versionInfo.Version, backupKey, nil
 }

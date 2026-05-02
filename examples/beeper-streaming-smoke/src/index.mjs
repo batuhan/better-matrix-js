@@ -1,4 +1,4 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Chat } from "chat";
@@ -7,8 +7,6 @@ import { createMatrixAdapter, loginMatrix } from "@better-matrix-js/chat-adapter
 import { MemoryState } from "./memory-state.mjs";
 
 const DEFAULT_INVITE = "@batuhan:beeper.com";
-const DEFAULT_DELAY_MS = 180;
-
 const loremSentenceCorpus = [
   "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
   "Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
@@ -68,34 +66,29 @@ const demoMarkdownTableRows = [
   ["review", "running", "formatting checks"],
 ];
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-function requiredEnv(name) {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing ${name}`);
-  return value;
-}
-
 function env(name, fallback) {
   return process.env[name] || fallback;
 }
 
 async function main() {
+  const startedAt = performance.now();
   await loadEnvFile(process.env.MATRIX_ENV_FILE || "/Users/batuhan/Projects/labs/matrix-asks/.env");
+  logTiming("env_loaded", startedAt);
   const homeserverUrl = env("MATRIX_HOMESERVER_URL", process.env.MATRIX_HOMESERVER);
   if (!homeserverUrl) throw new Error("Missing MATRIX_HOMESERVER_URL or MATRIX_HOMESERVER");
-  const login = await resolveLogin(homeserverUrl);
-  const inviteUserId = env("MATRIX_INVITE_USER_ID", DEFAULT_INVITE);
-  const roomId =
-    process.env.MATRIX_ROOM_ID || (await createSmokeRoom(homeserverUrl, login.accessToken, inviteUserId));
-  console.log(`room_id=${roomId}`);
-  console.log(`invited=${inviteUserId}`);
   const storeDir = env(
     "MATRIX_STORE_DIR",
     join(dirname(fileURLToPath(import.meta.url)), "..", ".matrix-store")
   );
 
   await mkdir(storeDir, { recursive: true });
+  logTiming("store_ready", startedAt);
+  const login = await resolveLogin(homeserverUrl, storeDir);
+  logTiming("login_resolved", startedAt);
+  const inviteUserId = env("MATRIX_INVITE_USER_ID", DEFAULT_INVITE);
+  const roomId = await resolveSmokeRoom(homeserverUrl, login.accessToken, inviteUserId, storeDir);
+  console.log(`room_id=${roomId}`);
+  console.log(`invited=${inviteUserId}`);
 
   const matrix = createMatrixAdapter({
     accessToken: login.accessToken,
@@ -103,11 +96,15 @@ async function main() {
       loadMatrixCoreFromNodePackage({
         host: { store: new FileMatrixStore(storeDir) },
       }),
+    deviceId: process.env.MATRIX_DEVICE_ID || login.deviceId,
     homeserverUrl,
-    catchUpOnStart: process.env.MATRIX_CATCH_UP_ON_START === "1",
+    initialSyncMode: readInitialSyncMode(),
+    initialSyncSince: process.env.MATRIX_INITIAL_SYNC_SINCE,
     inviteAutoJoin: { inviterAllowlist: [inviteUserId] },
     polling: { timeoutMs: 10_000 },
     recoveryKey: process.env.MATRIX_RECOVERY_KEY,
+    userId: process.env.MATRIX_USER_ID || login.userId,
+    verifyRecoveryOnStart: process.env.MATRIX_VERIFY_RECOVERY_ON_START === "1",
     userName: "matrix-stream-smoke",
   });
 
@@ -131,19 +128,21 @@ async function main() {
   });
 
   await bot.initialize();
+  logTiming("bot_initialized", startedAt);
   const threadId = matrix.encodeThreadId({ roomId });
   const thread = bot.createThread(matrix, threadId, {}, false);
   await thread.subscribe();
   console.log(`subscribed_thread=${threadId}`);
-  postWithTimeout(
-    thread,
-    [
-      "Streaming smoke bot is online.",
-      "Try: stream-lorem 4096 --reasoning=1200 --steps=3 --sources=4 --documents=3 --files=2 --meta --data=demo --data-transient=typing --delay-ms=80:220 --chunk-chars=48:160",
-      "Also: stream-tools 2500 search#delta#prelim approval#deny weather#provider --reasoning=800 --steps=3, stream-random 20 --actions=24 --profile=artifacts, tools, error.",
-    ].join("\n"),
-    "initial online post"
-  );
+  thread
+    .post(
+      [
+        "Streaming smoke bot is online.",
+        "Try: stream-lorem 4096 --reasoning=1200 --steps=3 --sources=4 --documents=3 --files=2 --meta --data=demo --data-transient=typing --chunk-chars=48:160",
+        "Also: stream-tools 2500 search#delta#prelim approval#deny weather#provider --reasoning=800 --steps=3, stream-random 20 --actions=24 --profile=artifacts, tools, error.",
+      ].join("\n")
+    )
+    .then(() => console.log("initial_online_post=ok"))
+    .catch((error) => console.error("initial_online_post=failed", error));
 
   console.log(`bot_user_id=${matrix.botUserId}`);
   console.log("waiting for Matrix messages; press Ctrl-C to stop");
@@ -152,6 +151,17 @@ async function main() {
     await bot.shutdown();
     process.exit(0);
   });
+}
+
+function logTiming(step, startedAt) {
+  console.log(`startup_${step}_ms=${Math.round(performance.now() - startedAt)}`);
+}
+
+function readInitialSyncMode() {
+  if (process.env.MATRIX_INITIAL_SYNC_MODE) return process.env.MATRIX_INITIAL_SYNC_MODE;
+  if (process.env.MATRIX_CATCH_UP_ON_START === "1") return "catch_up";
+  if (process.env.MATRIX_CATCH_UP_ON_START === "0") return "latest";
+  return undefined;
 }
 
 async function loadEnvFile(path) {
@@ -198,18 +208,6 @@ async function respond(matrix, thread, message) {
     await matrix.stream(matrix.encodeThreadId({ roomId }), rawAgentStream(text));
   }
   console.log(`responded_to=${message.id}`);
-}
-
-function postWithTimeout(thread, message, label) {
-  const timeoutMs = Number(process.env.MATRIX_BOOTSTRAP_POST_TIMEOUT_MS || 15000);
-  Promise.race([
-    thread.post(message),
-    sleep(timeoutMs).then(() => {
-      throw new Error(`${label} timed out after ${timeoutMs}ms`);
-    }),
-  ])
-    .then(() => console.log(`${label}=ok`))
-    .catch((error) => console.error(`${label}=failed`, error));
 }
 
 function readOption(tokens, name, fallback) {
@@ -347,19 +345,67 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-async function resolveLogin(homeserverUrl) {
+async function resolveLogin(homeserverUrl, storeDir) {
   if (process.env.MATRIX_ACCESS_TOKEN) {
-    return { accessToken: process.env.MATRIX_ACCESS_TOKEN };
+    return {
+      accessToken: process.env.MATRIX_ACCESS_TOKEN,
+      deviceId: process.env.MATRIX_DEVICE_ID,
+      homeserverUrl,
+      userId: process.env.MATRIX_USER_ID,
+    };
   }
   if (!process.env.MATRIX_USERNAME || !process.env.MATRIX_PASSWORD) {
     throw new Error("Missing MATRIX_ACCESS_TOKEN or MATRIX_USERNAME/MATRIX_PASSWORD");
   }
-  return loginMatrix({
+  const cachePath = join(storeDir, "login-session.json");
+  const cached = await readJSON(cachePath);
+  if (
+    cached?.accessToken &&
+    cached?.homeserverUrl === homeserverUrl &&
+    cached?.username === process.env.MATRIX_USERNAME
+  ) {
+    console.log("login_session_cache=hit");
+    return cached;
+  }
+  console.log("login_session_cache=miss");
+  const login = await loginMatrix({
     homeserverUrl,
     initialDeviceDisplayName: "matrix-chat-sdk streaming smoke",
     password: process.env.MATRIX_PASSWORD,
     username: process.env.MATRIX_USERNAME,
   });
+  const session = { ...login, username: process.env.MATRIX_USERNAME };
+  await writeJSON(cachePath, session);
+  return session;
+}
+
+async function resolveSmokeRoom(homeserverUrl, accessToken, inviteUserId, storeDir) {
+  if (process.env.MATRIX_ROOM_ID) {
+    return process.env.MATRIX_ROOM_ID;
+  }
+  const cachePath = join(storeDir, "smoke-room.json");
+  const cached = await readJSON(cachePath);
+  if (cached?.roomId && cached.inviteUserId === inviteUserId && cached.homeserverUrl === homeserverUrl) {
+    console.log("smoke_room_cache=hit");
+    return cached.roomId;
+  }
+  console.log("smoke_room_cache=miss");
+  const roomId = await createSmokeRoom(homeserverUrl, accessToken, inviteUserId);
+  await writeJSON(cachePath, { homeserverUrl, inviteUserId, roomId });
+  return roomId;
+}
+
+async function readJSON(path) {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function writeJSON(path, value) {
+  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 async function createSmokeRoom(homeserverUrl, accessToken, inviteUserId) {
@@ -432,8 +478,6 @@ async function* rawAgentStream(text) {
     meta: true,
     data: "smoke-run",
     dataTransient: "plan-update",
-    delayMin: Number(process.env.MATRIX_SMOKE_STREAM_DELAY_MS || DEFAULT_DELAY_MS),
-    delayMax: Number(process.env.MATRIX_SMOKE_STREAM_DELAY_MS || DEFAULT_DELAY_MS),
     chunkMin: 48,
     chunkMax: 140,
     seed: 42,
@@ -475,7 +519,6 @@ function parseSmokeCommand(text) {
 }
 
 function parseCommonOptions(tokens) {
-  const delay = readRangeOption(tokens, "delay-ms", DEFAULT_DELAY_MS, DEFAULT_DELAY_MS);
   const chunk = readRangeOption(tokens, "chunk-chars", 48, 160);
   return {
     abort: tokens.includes("--abort"),
@@ -483,8 +526,6 @@ function parseCommonOptions(tokens) {
     chunkMin: chunk.min,
     data: readOption(tokens, "data", "demo"),
     dataTransient: readOption(tokens, "data-transient", "demo-transient"),
-    delayMax: delay.max,
-    delayMin: delay.min,
     documents: readOptionInt(tokens, "documents", 2),
     error: tokens.includes("--error"),
     files: readOptionInt(tokens, "files", 1),
@@ -555,10 +596,9 @@ function defaultToolSpecs(text) {
   ];
 }
 
-async function* emitDecorations(options, step, steps, pause) {
+async function* emitDecorations(options, step, steps) {
   if (options.meta) {
     yield { messageMetadata: buildDemoMessageMetadata("demo", options.seed, step + 1), type: "message-metadata" };
-    await pause();
   }
   for (let i = 0; i < splitCount(options.sources, steps, step); i++) {
     yield {
@@ -568,7 +608,6 @@ async function* emitDecorations(options, step, steps, pause) {
       type: "source-url",
       url: `https://dummybridge.local/source/${step + 1}-${i + 1}`,
     };
-    await pause();
   }
   for (let i = 0; i < splitCount(options.documents, steps, step); i++) {
     yield {
@@ -579,7 +618,6 @@ async function* emitDecorations(options, step, steps, pause) {
       title: `Demo Document ${step + 1}.${i + 1}`,
       type: "source-document",
     };
-    await pause();
   }
   for (let i = 0; i < splitCount(options.files, steps, step); i++) {
     yield {
@@ -588,19 +626,16 @@ async function* emitDecorations(options, step, steps, pause) {
       type: "file",
       url: `mxc://dummybridge/demo-file-${step + 1}-${i + 1}`,
     };
-    await pause();
   }
   if (step === 0 && options.data) {
     yield { data: { mode: "persistent", stage: step + 1 }, id: options.data, type: `data-${options.data}` };
-    await pause();
   }
   if (step === 0 && options.dataTransient) {
     yield { data: { mode: "transient", stage: step + 1 }, id: options.dataTransient, transient: true, type: `data-${options.dataTransient}` };
-    await pause();
   }
 }
 
-async function* streamToolSpec(spec, sequence, pause, rng, options) {
+async function* streamToolSpec(spec, sequence, rng, options) {
   const toolCallId = `dummy-tool-${sequence}-${sanitizeToolName(spec.name)}`;
   const toolName = sanitizeToolName(spec.name);
   const input = { sequence, tags: spec.tags ?? [], tool: spec.name };
@@ -613,7 +648,6 @@ async function* streamToolSpec(spec, sequence, pause, rng, options) {
     toolName,
     type: "tool-input-start",
   };
-  await pause();
   if (spec.inputError) {
     yield {
       dynamic: true,
@@ -625,11 +659,9 @@ async function* streamToolSpec(spec, sequence, pause, rng, options) {
       toolName,
       type: "tool-input-error",
     };
-    await pause();
   } else if (spec.delta) {
     for (const chunk of chunkText(JSON.stringify(input), rng, options.chunkMin, options.chunkMax)) {
       yield { inputTextDelta: chunk, toolCallId, type: "tool-input-delta" };
-      await pause();
     }
   }
   yield {
@@ -641,26 +673,20 @@ async function* streamToolSpec(spec, sequence, pause, rng, options) {
     toolName,
     type: "tool-input-available",
   };
-  await pause();
   if (spec.preliminary) {
     yield { output: { status: "streaming", tool: spec.name }, preliminary: true, providerExecuted: spec.provider === true, toolCallId, type: "tool-output-available" };
-    await pause();
   }
   if (spec.approval || spec.deny) {
     const approvalId = `approval-${sequence}-${sanitizeToolName(spec.name)}`;
     yield { approvalId, toolCallId, type: "tool-approval-request" };
-    await pause();
     yield { approvalId, approved: !spec.deny, reason: spec.deny ? "Denied automatically by smoke test" : "Approved automatically by smoke test", toolCallId, type: "tool-approval-response" };
-    await pause();
     if (spec.deny) {
       yield { toolCallId, type: "tool-output-denied" };
-      await pause();
       return;
     }
   }
   if (spec.fail || spec.inputError) {
     yield { errorText: "DummyBridge synthetic tool failure", providerExecuted: spec.provider === true, toolCallId, type: "tool-output-error" };
-    await pause();
     return;
   }
   yield {
@@ -669,47 +695,38 @@ async function* streamToolSpec(spec, sequence, pause, rng, options) {
     toolCallId,
     type: "tool-output-available",
   };
-  await pause();
 }
 
 async function* streamFullDemo(text, options) {
   const rng = makeRng(options.seed ?? 1);
-  const pause = () => sleep(sampleInt(rng, options.delayMin, options.delayMax));
   const visible = buildDemoVisibleText(options.chars, rng);
   const reasoning = buildLoremText(options.reasoning, rng);
   const steps = Math.max(1, options.steps || 1);
 
   yield { messageMetadata: buildDemoMessageMetadata("beeper-streaming-smoke", options.seed ?? 1, 0), type: "message-metadata" };
-  await pause();
   yield { id: "reasoning-smoke", type: "reasoning-start" };
   for (const chunk of chunkText(reasoning, rng, options.chunkMin, options.chunkMax)) {
     yield { delta: chunk, id: "reasoning-smoke", type: "reasoning-delta" };
-    await pause();
   }
   yield { id: "reasoning-smoke", type: "reasoning-end" };
-  await pause();
 
   yield { text: `I heard: \`${text}\`\n\n`, type: "markdown_text" };
-  await pause();
 
   for (let step = 0; step < steps; step++) {
     yield { type: "start-step" };
-    await pause();
-    yield* emitDecorations(options, step, steps, pause);
+    yield* emitDecorations(options, step, steps);
     for (const chunk of chunkText(sliceByStep(visible, steps, step), rng, options.chunkMin, options.chunkMax)) {
       yield { text: chunk, type: "markdown_text" };
-      await pause();
     }
     const tool = options.tools?.[step];
     if (tool) {
-      yield* streamToolSpec(tool, step + 1, pause, rng, options);
+      yield* streamToolSpec(tool, step + 1, rng, options);
     }
     yield { type: "finish-step" };
-    await pause();
   }
 
   for (const tool of options.tools?.slice(steps) ?? []) {
-    yield* streamToolSpec(tool, options.tools.indexOf(tool) + 1, pause, rng, options);
+    yield* streamToolSpec(tool, options.tools.indexOf(tool) + 1, rng, options);
   }
 
   if (options.abort) {

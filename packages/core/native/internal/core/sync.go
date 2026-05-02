@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
@@ -19,6 +20,7 @@ type syncOnceReq struct {
 }
 
 func (c *Core) handleSyncOnce(ctx context.Context, payload []byte) ([]byte, error) {
+	started := time.Now()
 	c.syncMu.Lock()
 	defer c.syncMu.Unlock()
 
@@ -50,6 +52,12 @@ func (c *Core) handleSyncOnce(ctx context.Context, payload []byte) ([]byte, erro
 		})
 	})
 	if err != nil {
+		c.emit(OutboundEvent{
+			"type":       "sync_status",
+			"status":     "retrying",
+			"error":      err.Error(),
+			"durationMs": time.Since(started).Milliseconds(),
+		})
 		return nil, err
 	}
 	since := c.nextBatch
@@ -69,6 +77,7 @@ func (c *Core) handleSyncOnce(ctx context.Context, payload []byte) ([]byte, erro
 			return nil, err
 		}
 	}
+	c.emit(OutboundEvent{"type": "sync_status", "status": "synced", "durationMs": time.Since(started).Milliseconds()})
 	return c.empty()
 }
 

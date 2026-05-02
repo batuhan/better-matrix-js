@@ -22,6 +22,7 @@ export interface MatrixAdapterConfig extends MatrixCoreInitOptions {
     retryDelayMs?: number;
     timeoutMs?: number;
   };
+  verifyRecoveryOnStart?: boolean;
   inviteAutoJoin?: {
     inviterAllowlist?: string[];
   };
