@@ -70,6 +70,12 @@ Your webhook receives `{ response, since }`. Apply it to a `MatrixClient` runnin
 await client.sync.applyResponse({ response: body.response, since: body.since });
 ```
 
+## Cursor ownership
+
+Use one `MatrixSyncDurableObject` per Matrix account. It owns the `/sync` cursor and is the only component that should call Matrix `/sync` for that account. Your account Durable Object should own the `MatrixClient`, durable crypto store, bot state, and webhook handler, then apply each sync payload with `applyResponse`.
+
+This split keeps serverless workers from racing cursors. If you choose not to use `MatrixSyncDurableObject`, keep the same rule: exactly one durable actor advances the cursor, and every consumer processes responses from that actor.
+
 ## Config
 
 Pass options directly when subclassing, or use env vars:

@@ -8,6 +8,8 @@ npm install better-matrix-js
 
 ## Node
 
+Use the Node entrypoint and a durable store. File or SQLite storage is enough for a single-process bot; production deployments can provide any `MatrixStore` implementation.
+
 ```ts
 import { createMatrixClient } from "better-matrix-js/node";
 import { createFileMatrixStore } from "@better-matrix-js/state-file";
@@ -44,6 +46,8 @@ await client.reactions.send({ roomId: "!room:example.org", eventId, key: "hi" })
 ```
 
 ## Cloudflare Workers
+
+Cloudflare Workers need the generic entrypoint plus an explicit WASM module import.
 
 ```ts
 import "better-matrix-js/wasm_exec.js";
@@ -102,7 +106,15 @@ const client = createMatrixClient({
 
 ## Browser / other runtimes
 
-Pass any of `wasmModule`, `wasmBytes`, or `wasmUrl` to `createMatrixClient()`, plus a `store` implementing the `MatrixStore` interface.
+Pass any of `wasmModule`, `wasmBytes`, or `wasmUrl` to `createMatrixClient()`, plus a `store` implementing the `MatrixStore` interface. For browser apps, serve `matrix-core.wasm` with your static assets and use `@better-matrix-js/state-indexeddb` so sync and E2EE state survive page reloads.
+
+## Live sync vs serverless applyResponse
+
+Use `client.sync.start()` when the same process can keep a long-lived `/sync` request open. In serverless runtimes, run `/sync` elsewhere and call `client.sync.applyResponse({ response, since })` for each response. Do not run both for the same account at the same time; only one component should advance a Matrix account cursor.
+
+## E2EE storage and keys
+
+Encrypted accounts need durable Matrix storage. The store contains Olm/Megolm session state and the sync cursor, while `pickleKey` protects local pickles and `recoveryKey` unlocks Matrix key backup. Keep `pickleKey` stable for a device; rotate it only with a planned device reset or store migration.
 
 ## What it does
 

@@ -45,6 +45,8 @@ bot.onNewMention(async (thread, message) => {
 await bot.initialize();
 ```
 
+For Node bots, use a durable Chat SDK state adapter and a durable Matrix store. E2EE bots must keep their Matrix crypto store across restarts; changing `pickleKey` or losing the store makes existing encrypted device state unreadable.
+
 ### Raw Matrix core (no Chat SDK)
 
 ```ts
@@ -75,9 +77,29 @@ await client.sync.start();
 
 See [`examples/cloudflare-worker`](examples/cloudflare-worker). The recipe: one Durable Object per Matrix account holds the core + crypto store, a second one (`MatrixSyncDurableObject`) long-polls `/sync` and webhooks the response back. Worker bundles are ~4 MB compressed because of the Go WASM payload.
 
+Use `MatrixSyncDurableObject` for live sync and feed each webhook body to `client.sync.applyResponse({ response, since })` in the account Durable Object. The sync Durable Object owns the `/sync` cursor; the account Durable Object owns Matrix client state, crypto state, and bot behavior.
+
 ### State adapters
 
 Use `@better-matrix-js/state-memory` for tests, `@better-matrix-js/state-file` or `@better-matrix-js/state-sqlite` in Node, `@better-matrix-js/state-indexeddb` in browsers, and `@better-matrix-js/cloudflare` for Durable Object or KV storage. For anything custom, wrap a simple getter/setter with `@better-matrix-js/state-simple`.
+
+Browser apps should load `matrix-core.wasm` with `wasmUrl`, `wasmBytes`, or a bundler-provided `wasmModule`, and should persist Matrix state in IndexedDB.
+
+## Feature support matrix
+
+| Feature | Support |
+| --- | --- |
+| Node bots | Supported via `better-matrix-js/node` and file, SQLite, or custom stores. |
+| Browser apps | Supported with explicit WASM loading and IndexedDB-backed state. |
+| Cloudflare Workers | Supported with Durable Object state and `MatrixSyncDurableObject`. |
+| Live `/sync` loop | Supported with `client.sync.start()` in long-lived runtimes. |
+| Serverless sync | Supported by applying webhooked responses with `applyResponse`. |
+| E2EE | Supported when the crypto store, `pickleKey`, and optional `recoveryKey` are durable. |
+| Beeper ephemeral events | Supported only on Beeper homeservers. |
+| Native streaming | Uses Beeper native stream events on Beeper; falls back to Matrix edits elsewhere. |
+| Chat SDK native modals | Not supported by Matrix. |
+| Chat SDK scheduled messages | Not supported by Matrix. |
+| URL previews | Intentionally unsupported; bots should render links explicitly. |
 
 ## Examples
 

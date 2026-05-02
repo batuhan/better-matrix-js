@@ -30,9 +30,9 @@
 - [ ] Add room permission/power-level inspection.
 - [x] Add generic room state read/send APIs for advanced users.
 - [x] Add member listing and member event/profile APIs.
-- [ ] Add room alias resolution and optional directory lookup.
-- [ ] Add optional media thumbnail support.
-- [ ] Decide whether URL previews belong in scope; document unsupported if not.
+- [x] Add room alias resolution and optional directory lookup.
+- [x] Add optional media thumbnail support.
+- [x] Decide whether URL previews belong in scope; document unsupported if not.
 
 ## Go/Core Ownership
 
@@ -44,9 +44,9 @@
 - [ ] Normalize inbound edits in core without Chat adapter raw-content inference.
 - [ ] Move reaction target/thread lookup into core state.
 - [ ] Make reaction removal work across cold starts.
-- [ ] Make `openDM(userId)` reuse existing `m.direct` rooms by default.
-- [ ] Add an option to force creating a new DM when needed.
-- [ ] Use `m.direct` account data for DM detection before member-count fallback.
+- [x] Make `openDM(userId)` reuse existing `m.direct` rooms by default.
+- [x] Add an option to force creating a new DM when needed.
+- [x] Use `m.direct` account data for DM detection before member-count fallback.
 - [x] Make Beeper sync options conditional instead of setting `BeeperStreaming: true` for every homeserver.
 - [ ] Add Beeper capability detection beyond hostname fallback.
 - [ ] Keep encrypted media behavior in Go; remove duplicate TS parsing paths.
@@ -55,12 +55,12 @@
 
 ## Serverless
 
-- [ ] Document two modes: live sync and serverless apply-response.
-- [ ] Make cursor ownership explicit for Cloudflare DO syncer versus core `nextBatch`.
-- [ ] Ensure serverless `applyResponse` works with E2EE cold starts and durable crypto state.
-- [ ] Add a single-writer story for E2EE stores.
-- [ ] Recommend Durable Objects or other serialized storage for encrypted bots.
-- [ ] Warn against concurrent KV writes for active E2EE devices.
+- [x] Document two modes: live sync and serverless apply-response.
+- [x] Make cursor ownership explicit for Cloudflare DO syncer versus core `nextBatch`.
+- [x] Ensure serverless `applyResponse` works with E2EE cold starts and durable crypto state.
+- [x] Add a single-writer story for E2EE stores.
+- [x] Recommend Durable Objects or other serialized storage for encrypted bots.
+- [x] Warn against concurrent KV writes for active E2EE devices.
 - [ ] Add optional Cloudflare encrypted webhook helper outside the Matrix client sync API.
 - [ ] Add webhook replay/idempotency guidance.
 
@@ -83,11 +83,11 @@
 - [x] Split `packages/core/src/client.ts` streaming orchestration into `streams.ts`.
 - [ ] Continue shrinking `packages/core/src/client.ts` by moving media byte helpers if it keeps growing.
 - [ ] Keep card/action support fallback-only unless Beeper interactive product scope is explicitly added.
-- [ ] Document unsupported Chat SDK features: native modals and native scheduled messages.
+- [x] Document unsupported Chat SDK features: native modals and native scheduled messages.
 
 ## E2EE
 
-- [ ] Require or strongly recommend explicit `pickleKey` for durable E2EE bot deployments.
+- [x] Require or strongly recommend explicit `pickleKey` for durable E2EE bot deployments.
 - [ ] Reconsider access-token fallback as pickle key before release.
 - [ ] Provide a clear bot onboarding flow: login, device ID, store persistence, recovery key restore.
 - [ ] Test fresh-device historical decryption via recovery key.
@@ -101,7 +101,7 @@
 - [ ] Add Go relation parsing tests.
 - [ ] Add Go redaction/edit normalization tests.
 - [ ] Add reaction removal after cold start test.
-- [ ] Add `openDM` reuse test.
+- [x] Add `openDM` reuse test.
 - [ ] Add serverless encrypted-room `applyResponse` test.
 - [ ] Add serverless replay/idempotency test.
 - [x] Add core streaming tests for Beeper-native and edit-fallback modes.
@@ -116,12 +116,12 @@
 
 ## Documentation
 
-- [ ] Document browser setup.
-- [ ] Document Node setup.
-- [ ] Document Cloudflare Worker setup.
-- [ ] Document serverless sync apply-response flow.
-- [ ] Document E2EE bot storage requirements.
-- [ ] Document recovery key usage.
-- [ ] Document Beeper-only ephemeral support.
-- [ ] Document Beeper-native streaming and edit-fallback streaming.
-- [ ] Document feature support matrix.
+- [x] Document browser setup.
+- [x] Document Node setup.
+- [x] Document Cloudflare Worker setup.
+- [x] Document serverless sync apply-response flow.
+- [x] Document E2EE bot storage requirements.
+- [x] Document recovery key usage.
+- [x] Document Beeper-only ephemeral support.
+- [x] Document Beeper-native streaming and edit-fallback streaming.
+- [x] Document feature support matrix.

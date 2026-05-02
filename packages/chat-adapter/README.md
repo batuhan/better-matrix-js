@@ -35,6 +35,8 @@ await bot.initialize();
 
 That's it. The adapter starts long-sync `/sync` automatically and forwards Matrix events into Chat SDK threads.
 
+For E2EE bots, keep both Chat SDK state and Matrix client state durable. `recoveryKey` lets the bot restore backed-up room keys, while `pickleKey` protects the local crypto pickles; keep `pickleKey` stable for the lifetime of the Matrix device.
+
 ## Login with password
 
 If you don't have an access token yet:
@@ -72,11 +74,11 @@ async function* agentStream(prompt: string) {
 }
 ```
 
-On Beeper homeservers this uses Beeper's native streaming events; elsewhere it falls back to debounced edits. To wire the AI SDK directly, see [`@better-matrix-js/ai-sdk`](https://github.com/batuhan/better-matrix-js/tree/main/packages/ai-sdk).
+On Beeper homeservers this uses Beeper native streaming events; elsewhere it falls back to debounced Matrix edits. To wire the AI SDK directly, see [`@better-matrix-js/ai-sdk`](https://github.com/batuhan/better-matrix-js/tree/main/packages/ai-sdk).
 
 ## Serverless / webhook sync
 
-If you run `/sync` outside the worker (e.g. from a Durable Object), disable the built-in poller and feed responses in:
+If you run `/sync` outside the adapter, for example from `MatrixSyncDurableObject`, disable the built-in poller and feed responses in:
 
 ```ts
 const matrix = createMatrixAdapter({
@@ -86,6 +88,8 @@ const matrix = createMatrixAdapter({
 
 await matrix.handleSyncResponse({ response, since });
 ```
+
+In this mode the external sync runner owns the cursor. Do not also let the adapter run live sync for the same Matrix account.
 
 ## Thread IDs
 
@@ -112,6 +116,17 @@ createMatrixAdapter({
   commandPrefix,
 });
 ```
+
+## Matrix-specific support
+
+| Chat SDK feature | Matrix adapter support |
+| --- | --- |
+| Messages, replies, reactions, threads | Supported. |
+| Streaming responses | Beeper native streaming on Beeper homeservers; Matrix edit fallback elsewhere. |
+| Ephemeral messages | Beeper-only. Non-Beeper homeservers reject this operation. |
+| Native modals | Unsupported because Matrix has no equivalent native surface. |
+| Scheduled messages | Unsupported; schedule work in your app and send later. |
+| URL previews | Unsupported by design; send explicit text or rendered content instead. |
 
 ## License
 
