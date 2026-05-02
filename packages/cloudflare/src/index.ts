@@ -111,6 +111,9 @@ export function createCloudflareKVMatrixStore(
   };
 }
 
+export const createCloudflareKVMatrixStoreAdapter = createCloudflareKVMatrixStore;
+export const createCloudflareKVMatrixStoreAdaptor = createCloudflareKVMatrixStore;
+
 export function createDurableObjectMatrixStore(
   storage: DurableObjectStorageLike,
   options: CloudflareStoreOptions = {}
@@ -139,6 +142,9 @@ export function createDurableObjectMatrixStore(
     },
   };
 }
+
+export const createDurableObjectMatrixStoreAdapter = createDurableObjectMatrixStore;
+export const createDurableObjectMatrixStoreAdaptor = createDurableObjectMatrixStore;
 
 export class MatrixSyncDurableObject {
   readonly #env: MatrixSyncDurableObjectEnv;

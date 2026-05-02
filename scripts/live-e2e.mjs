@@ -3,7 +3,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FileMatrixStore, loadMatrixCoreFromNodePackage } from "../packages/core/dist/node.js";
+import { createFileMatrixStore } from "../packages/state-file/dist/index.js";
+import { loadMatrixCoreFromNodePackage } from "../packages/core/dist/node.js";
 
 const DEFAULT_TIMEOUT_MS = 90_000;
 
@@ -32,7 +33,7 @@ async function createAccount(role, runDir) {
           console.error(`[${role}] ${level}: ${message}`, data ?? "");
         }
       },
-      store: new FileMatrixStore(join(runDir, role.toLowerCase())),
+      store: createFileMatrixStore(join(runDir, role.toLowerCase())),
     },
   });
   core.onEvent((event) => events.push(event));

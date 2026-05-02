@@ -10,7 +10,7 @@ Built on `mautrix-go` + `goolm` compiled to WebAssembly. No `matrix-js-sdk`, no 
 | --- | --- |
 | [`better-matrix-js`](packages/core) | Matrix core. Login, sync, rooms, messages, reactions, threads, media, E2EE. |
 | [`@better-matrix-js/chat-adapter`](packages/chat-adapter) | [Chat SDK](https://www.npmjs.com/package/chat) adapter on top of the core. |
-| [`@better-matrix-js/cloudflare`](packages/cloudflare) | KV / Durable Object storage + a long-poll sync Durable Object for Workers. |
+| [`@better-matrix-js/cloudflare`](packages/cloudflare) | KV / Durable Object state + a long-poll sync Durable Object for Workers. |
 | [`@better-matrix-js/ai-sdk`](packages/ai-sdk) | Adapt AI SDK UI message streams into the chat-adapter `stream()` API. |
 
 ## Quick start
@@ -23,7 +23,8 @@ npm install chat better-matrix-js @better-matrix-js/chat-adapter
 
 ```ts
 import { Chat } from "chat";
-import { FileMatrixStore, loadMatrixCoreFromNodePackage } from "better-matrix-js/node";
+import { createFileMatrixStore } from "@better-matrix-js/state-file";
+import { loadMatrixCoreFromNodePackage } from "better-matrix-js/node";
 import { createMatrixAdapter } from "@better-matrix-js/chat-adapter";
 
 const matrix = createMatrixAdapter({
@@ -31,7 +32,7 @@ const matrix = createMatrixAdapter({
   homeserverUrl: "https://matrix.example.org",
   createCore: () =>
     loadMatrixCoreFromNodePackage({
-      host: { store: new FileMatrixStore(".matrix-store") },
+      host: { store: createFileMatrixStore(".matrix-store") },
     }),
   recoveryKey: process.env.MATRIX_RECOVERY_KEY,
 });
@@ -49,10 +50,11 @@ await bot.initialize();
 ### Raw Matrix core (no Chat SDK)
 
 ```ts
-import { FileMatrixStore, loadMatrixCoreFromNodePackage } from "better-matrix-js/node";
+import { createFileMatrixStore } from "@better-matrix-js/state-file";
+import { loadMatrixCoreFromNodePackage } from "better-matrix-js/node";
 
 const core = await loadMatrixCoreFromNodePackage({
-  host: { store: new FileMatrixStore(".matrix-store") },
+  host: { store: createFileMatrixStore(".matrix-store") },
 });
 
 await core.init({
@@ -66,6 +68,10 @@ await core.postMessage({ roomId: "!room:example.org", body: "hello" });
 ### Cloudflare Worker
 
 See [`examples/cloudflare-worker`](examples/cloudflare-worker). The recipe: one Durable Object per Matrix account holds the core + crypto store, a second one (`MatrixSyncDurableObject`) long-polls `/sync` and webhooks the response back. Worker bundles are ~4 MB compressed because of the Go WASM payload.
+
+### State adapters
+
+Use `@better-matrix-js/state-memory` for tests, `@better-matrix-js/state-file` or `@better-matrix-js/state-sqlite` in Node, `@better-matrix-js/state-indexeddb` in browsers, and `@better-matrix-js/cloudflare` for Durable Object or KV storage. For anything custom, wrap a simple getter/setter with `@better-matrix-js/state-simple`.
 
 ## Examples
 

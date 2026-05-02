@@ -1,34 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { runInThisContext } from "node:vm";
-import { copyBytes } from "./bytes";
-import type { MatrixKeyValueStore } from "./types";
-import { loadMatrixCore, type LoadMatrixCoreOptions, type MatrixWasmCore } from "./wasm";
-
-export interface LoadMatrixCoreFromNodeOptions extends Omit<LoadMatrixCoreOptions, "wasmUrl"> {
-  wasmExecPath?: string;
-  wasmPath?: string;
-}
-
-export async function loadMatrixCoreFromNodePackage(
-  options: LoadMatrixCoreFromNodeOptions = {}
-): Promise<MatrixWasmCore> {
-  const { wasmExecPath, wasmPath, ...coreOptions } = options;
-  const distDir = dirname(fileURLToPath(import.meta.url));
-
-  if (!coreOptions.go && !globalThis.Go) {
-    const runtimePath = wasmExecPath ?? join(distDir, "wasm_exec.js");
-    runInThisContext(await readFile(runtimePath, "utf8"), { filename: runtimePath });
-  }
-
-  if (!coreOptions.wasmBytes && !coreOptions.wasmModule) {
-    coreOptions.wasmBytes = await readFile(wasmPath ?? join(distDir, "matrix-core.wasm"));
-  }
-
-  return loadMatrixCore(coreOptions);
-}
+import { join } from "node:path";
+import { copyBytes, type MatrixKeyValueStore } from "better-matrix-js";
 
 export class FileMatrixStore implements MatrixKeyValueStore {
   readonly #dir: string;
@@ -41,7 +14,9 @@ export class FileMatrixStore implements MatrixKeyValueStore {
   async delete(key: string): Promise<void> {
     const index = await this.#loadIndex();
     const filename = index.get(key);
-    if (!filename) return;
+    if (!filename) {
+      return;
+    }
     index.delete(key);
     await rm(join(this.#dir, filename), { force: true });
     await this.#saveIndex(index);
@@ -50,18 +25,22 @@ export class FileMatrixStore implements MatrixKeyValueStore {
   async get(key: string): Promise<Uint8Array | null> {
     const index = await this.#loadIndex();
     const filename = index.get(key);
-    if (!filename) return null;
+    if (!filename) {
+      return null;
+    }
     try {
       return copyBytes(await readFile(join(this.#dir, filename)));
     } catch (error) {
-      if (isNodeENOENT(error)) return null;
+      if (isNodeENOENT(error)) {
+        return null;
+      }
       throw error;
     }
   }
 
   async list(prefix: string): Promise<string[]> {
     const index = await this.#loadIndex();
-    return [...index.keys()].filter((key) => key.startsWith(prefix)).sort();
+    return [...index.keys()].filter((key) => key.startsWith(prefix));
   }
 
   async set(key: string, value: Uint8Array): Promise<void> {
@@ -74,12 +53,16 @@ export class FileMatrixStore implements MatrixKeyValueStore {
   }
 
   async #loadIndex(): Promise<Map<string, string>> {
-    if (this.#index) return this.#index;
+    if (this.#index) {
+      return this.#index;
+    }
     try {
       const raw = await readFile(join(this.#dir, "index.json"), "utf8");
       this.#index = new Map(Object.entries(JSON.parse(raw) as Record<string, string>));
     } catch (error) {
-      if (!isNodeENOENT(error)) throw error;
+      if (!isNodeENOENT(error)) {
+        throw error;
+      }
       this.#index = new Map();
     }
     return this.#index;
@@ -87,7 +70,10 @@ export class FileMatrixStore implements MatrixKeyValueStore {
 
   async #saveIndex(index: Map<string, string>): Promise<void> {
     await mkdir(this.#dir, { recursive: true });
-    await writeFile(join(this.#dir, "index.json"), JSON.stringify(Object.fromEntries(index), null, 2));
+    await writeFile(
+      join(this.#dir, "index.json"),
+      JSON.stringify(Object.fromEntries(index), null, 2)
+    );
   }
 }
 

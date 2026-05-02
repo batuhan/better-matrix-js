@@ -9,10 +9,11 @@ npm install better-matrix-js
 ## Node
 
 ```ts
-import { FileMatrixStore, loadMatrixCoreFromNodePackage } from "better-matrix-js/node";
+import { createFileMatrixStore } from "@better-matrix-js/state-file";
+import { loadMatrixCoreFromNodePackage } from "better-matrix-js/node";
 
 const core = await loadMatrixCoreFromNodePackage({
-  host: { store: new FileMatrixStore(".matrix-store/my-account") },
+  host: { store: createFileMatrixStore(".matrix-store/my-account") },
 });
 
 await core.init({
@@ -61,6 +62,41 @@ await core.init({ accessToken, homeserverUrl });
 ```
 
 For sync, use `MatrixSyncDurableObject` from `@better-matrix-js/cloudflare` and forward the response into `core.applySyncResponse({ response, since })`. See [`examples/cloudflare-worker`](https://github.com/batuhan/better-matrix-js/tree/main/examples/cloudflare-worker).
+
+## Storage
+
+Pass a state adapter as `host.store`. The store persists Matrix sync state and E2EE crypto state, so use durable state for any real account.
+
+```ts
+import { createMatrixStore } from "@better-matrix-js/state-simple";
+import { createMemoryMatrixStore } from "@better-matrix-js/state-memory";
+import { createFileMatrixStore } from "@better-matrix-js/state-file";
+import { createSQLiteMatrixStore } from "@better-matrix-js/state-sqlite";
+import { createDurableObjectMatrixStore } from "@better-matrix-js/cloudflare";
+
+const memory = createMemoryMatrixStore(); // tests and local experiments
+const filesystem = createFileMatrixStore(".matrix-store/alice");
+const sqlite = await createSQLiteMatrixStore(".matrix-store/alice.db");
+const durableObject = createDurableObjectMatrixStore(state.storage);
+
+const custom = createMatrixStore({
+  get: (key) => myStore.get(key),
+  set: (key, value) => myStore.set(key, value),
+  delete: (key) => myStore.delete(key),
+  keys: () => myStore.keys(), // optional; otherwise an index key is maintained
+});
+```
+
+Browser apps can use IndexedDB:
+
+```ts
+import { createIndexedDBMatrixStore } from "@better-matrix-js/state-indexeddb";
+
+const core = await loadMatrixCore({
+  wasmUrl: "/matrix-core.wasm",
+  host: { store: createIndexedDBMatrixStore({ databaseName: "matrix-alice" }) },
+});
+```
 
 ## Browser / other runtimes
 

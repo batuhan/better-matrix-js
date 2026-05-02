@@ -1,6 +1,6 @@
 # @better-matrix-js/cloudflare
 
-Cloudflare Workers helpers for [`better-matrix-js`](https://github.com/batuhan/better-matrix-js): KV / Durable Object storage adapters and a ready-made sync Durable Object.
+Cloudflare Workers helpers for [`better-matrix-js`](https://github.com/batuhan/better-matrix-js): KV / Durable Object state adapters and a ready-made sync Durable Object.
 
 ```sh
 npm install better-matrix-js @better-matrix-js/cloudflare
@@ -22,6 +22,8 @@ const store = createCloudflareKVMatrixStore(env.MATRIX_KV, { prefix: "matrix/" }
 // Durable Object storage (recommended for E2EE — strong consistency)
 const store = createDurableObjectMatrixStore(state.storage, { prefix: "matrix/" });
 ```
+
+`createCloudflareKVMatrixStoreAdapter` / `Adaptor` and `createDurableObjectMatrixStoreAdapter` / `Adaptor` are exported as naming aliases for projects that standardize on adapter/adaptor factories.
 
 ## Sync Durable Object
 

@@ -38,8 +38,8 @@ const { stdout } = await execFileAsync(
       import * as cfCompat from "better-matrix-js/cloudflare";
       import * as adapter from "@better-matrix-js/chat-adapter";
       const checks = {
-        core: ["loadMatrixCore", "startMatrixPolling", "MemoryMatrixStore"].every((key) => key in core),
-        node: ["loadMatrixCoreFromNodePackage", "FileMatrixStore"].every((key) => key in node),
+        core: ["loadMatrixCore", "startMatrixPolling"].every((key) => key in core),
+        node: ["loadMatrixCoreFromNodePackage"].every((key) => key in node),
         cloudflare: ["createCloudflareKVMatrixStore", "createDurableObjectMatrixStore", "MatrixSyncDurableObject"].every((key) => key in cf),
         cloudflareCompat: ["createCloudflareKVMatrixStore", "createDurableObjectMatrixStore", "MatrixSyncDurableObject"].every((key) => key in cfCompat),
         adapter: ["createMatrixAdapter", "loginMatrix"].every((key) => key in adapter),

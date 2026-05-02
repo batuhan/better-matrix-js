@@ -88,8 +88,8 @@ try {
         import * as adapter from "@better-matrix-js/chat-adapter";
 
         const checks = {
-          core: ["loadMatrixCore", "startMatrixPolling", "MemoryMatrixStore"].every((key) => key in core),
-          node: ["loadMatrixCoreFromNodePackage", "FileMatrixStore", "createFileMatrixStore"].every((key) => key in node),
+          core: ["loadMatrixCore", "startMatrixPolling"].every((key) => key in core),
+          node: ["loadMatrixCoreFromNodePackage"].every((key) => key in node),
           cloudflare: ["createCloudflareKVMatrixStore", "createDurableObjectMatrixStore", "MatrixSyncDurableObject"].every((key) => key in cloudflare),
           cloudflareCompat: ["createCloudflareKVMatrixStore", "createDurableObjectMatrixStore", "MatrixSyncDurableObject"].every((key) => key in cloudflareCompat),
           adapter: ["createMatrixAdapter", "MatrixAdapter", "MatrixFormatConverter", "loginMatrix"].every((key) => key in adapter),

@@ -132,6 +132,110 @@ importers:
         specifier: ^4.0.18
         version: 4.1.5(@opentelemetry/api@1.9.0)(@types/node@25.6.0)(@vitest/coverage-v8@4.1.5)(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7))
 
+  packages/state-file:
+    dependencies:
+      better-matrix-js:
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^25.3.2
+        version: 25.6.0
+      '@vitest/coverage-v8':
+        specifier: ^4.0.18
+        version: 4.1.5(vitest@4.1.5)
+      tsup:
+        specifier: ^8.3.5
+        version: 8.5.1(postcss@8.5.10)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.18
+        version: 4.1.5(@opentelemetry/api@1.9.0)(@types/node@25.6.0)(@vitest/coverage-v8@4.1.5)(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7))
+
+  packages/state-indexeddb:
+    dependencies:
+      better-matrix-js:
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^25.3.2
+        version: 25.6.0
+      tsup:
+        specifier: ^8.3.5
+        version: 8.5.1(postcss@8.5.10)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
+  packages/state-memory:
+    dependencies:
+      better-matrix-js:
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^25.3.2
+        version: 25.6.0
+      '@vitest/coverage-v8':
+        specifier: ^4.0.18
+        version: 4.1.5(vitest@4.1.5)
+      tsup:
+        specifier: ^8.3.5
+        version: 8.5.1(postcss@8.5.10)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.18
+        version: 4.1.5(@opentelemetry/api@1.9.0)(@types/node@25.6.0)(@vitest/coverage-v8@4.1.5)(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7))
+
+  packages/state-simple:
+    dependencies:
+      better-matrix-js:
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^25.3.2
+        version: 25.6.0
+      '@vitest/coverage-v8':
+        specifier: ^4.0.18
+        version: 4.1.5(vitest@4.1.5)
+      tsup:
+        specifier: ^8.3.5
+        version: 8.5.1(postcss@8.5.10)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.18
+        version: 4.1.5(@opentelemetry/api@1.9.0)(@types/node@25.6.0)(@vitest/coverage-v8@4.1.5)(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7))
+
+  packages/state-sqlite:
+    dependencies:
+      better-matrix-js:
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^25.3.2
+        version: 25.6.0
+      '@vitest/coverage-v8':
+        specifier: ^4.0.18
+        version: 4.1.5(vitest@4.1.5)
+      tsup:
+        specifier: ^8.3.5
+        version: 8.5.1(postcss@8.5.10)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.18
+        version: 4.1.5(@opentelemetry/api@1.9.0)(@types/node@25.6.0)(@vitest/coverage-v8@4.1.5)(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7))
+
 packages:
 
   '@babel/helper-string-parser@7.27.1':

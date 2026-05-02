@@ -10,7 +10,8 @@ npm install chat better-matrix-js @better-matrix-js/chat-adapter
 
 ```ts
 import { Chat } from "chat";
-import { FileMatrixStore, loadMatrixCoreFromNodePackage } from "better-matrix-js/node";
+import { createFileMatrixStore } from "@better-matrix-js/state-file";
+import { loadMatrixCoreFromNodePackage } from "better-matrix-js/node";
 import { createMatrixAdapter } from "@better-matrix-js/chat-adapter";
 
 const matrix = createMatrixAdapter({
@@ -18,7 +19,7 @@ const matrix = createMatrixAdapter({
   homeserverUrl: "https://matrix.example.org",
   createCore: () =>
     loadMatrixCoreFromNodePackage({
-      host: { store: new FileMatrixStore(".matrix-store") },
+      host: { store: createFileMatrixStore(".matrix-store") },
     }),
   recoveryKey: process.env.MATRIX_RECOVERY_KEY,    // optional, enables E2EE
   inviteAutoJoin: { inviterAllowlist: ["@me:example.org"] },

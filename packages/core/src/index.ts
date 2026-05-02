@@ -1,5 +1,6 @@
-export { MemoryMatrixStore } from "./memory-store";
+export { copyBytes } from "./bytes";
 export { startMatrixPolling } from "./polling";
+export type { MaybePromise } from "./bytes";
 export type { MatrixPollingHandle, MatrixPollingOptions } from "./polling";
 export type {
   MatrixApplySyncResponseOptions,

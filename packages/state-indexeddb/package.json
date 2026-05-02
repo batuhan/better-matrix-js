@@ -1,0 +1,35 @@
+{
+  "name": "@better-matrix-js/state-indexeddb",
+  "version": "0.1.0",
+  "description": "IndexedDB Matrix state adapter for better-matrix-js",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "node ../../scripts/guard-pnpm-publish.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "better-matrix-js": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  },
+  "keywords": ["matrix", "state", "indexeddb"],
+  "license": "MPL-2.0"
+}

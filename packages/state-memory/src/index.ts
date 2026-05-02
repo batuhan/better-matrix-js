@@ -1,4 +1,4 @@
-import type { MatrixKeyValueStore } from "./types";
+import { copyBytes, type MatrixKeyValueStore } from "better-matrix-js";
 
 export class MemoryMatrixStore implements MatrixKeyValueStore {
   readonly #values = new Map<string, Uint8Array>();
@@ -9,7 +9,7 @@ export class MemoryMatrixStore implements MatrixKeyValueStore {
 
   async get(key: string): Promise<Uint8Array | null> {
     const value = this.#values.get(key);
-    return value ? new Uint8Array(value) : null;
+    return value ? copyBytes(value) : null;
   }
 
   async list(prefix: string): Promise<string[]> {
@@ -17,7 +17,10 @@ export class MemoryMatrixStore implements MatrixKeyValueStore {
   }
 
   async set(key: string, value: Uint8Array): Promise<void> {
-    this.#values.set(key, new Uint8Array(value));
+    this.#values.set(key, copyBytes(value));
   }
 }
 
+export function createMemoryMatrixStore(): MemoryMatrixStore {
+  return new MemoryMatrixStore();
+}
