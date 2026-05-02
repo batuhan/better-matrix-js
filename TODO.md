@@ -40,10 +40,10 @@
 - [x] Move mention detection fully into Go/core event normalization.
 - [x] Move relation parsing fully into Go/core event normalization.
 - [x] Normalize replies, threads, edits, annotations/reactions, and references in core.
-- [ ] Normalize inbound redactions in core.
+- [x] Normalize inbound redactions in core.
 - [ ] Normalize inbound edits in core without Chat adapter raw-content inference.
-- [ ] Move reaction target/thread lookup into core state.
-- [ ] Make reaction removal work across cold starts.
+- [x] Move reaction target/thread lookup into core state.
+- [x] Make reaction removal work across cold starts.
 - [x] Make `openDM(userId)` reuse existing `m.direct` rooms by default.
 - [x] Add an option to force creating a new DM when needed.
 - [x] Use `m.direct` account data for DM detection before member-count fallback.
@@ -100,7 +100,7 @@
 - [x] Add compile-time Chat SDK adapter conformance test.
 - [ ] Add Go relation parsing tests.
 - [ ] Add Go redaction/edit normalization tests.
-- [ ] Add reaction removal after cold start test.
+- [x] Add reaction removal after cold start test.
 - [x] Add `openDM` reuse test.
 - [ ] Add serverless encrypted-room `applyResponse` test.
 - [ ] Add serverless replay/idempotency test.

@@ -10,12 +10,12 @@ import (
 )
 
 type reactionSnapshot struct {
-	EventID          id.EventID
-	RelatesToEventID id.EventID
-	RoomID           id.RoomID
-	Sender           id.UserID
-	Key              string
-	Raw              any
+	EventID          id.EventID `json:"eventId"`
+	Key              string     `json:"key"`
+	Raw              any        `json:"raw,omitempty"`
+	RelatesToEventID id.EventID `json:"relatesToEventId"`
+	RoomID           id.RoomID  `json:"roomId"`
+	Sender           id.UserID  `json:"sender"`
 }
 
 type MatrixReactionOptions struct {
@@ -82,7 +82,7 @@ func (c *Core) handleRemoveReaction(ctx context.Context, payload []byte) ([]byte
 	return c.empty()
 }
 
-func (c *Core) processRedaction(evt *event.Event) {
+func (c *Core) processRedaction(ctx context.Context, evt *event.Event) {
 	redacts := evt.Redacts
 	if redacts == "" {
 		_ = evt.Content.ParseRaw(evt.Type)
@@ -98,7 +98,29 @@ func (c *Core) processRedaction(evt *event.Event) {
 		return
 	}
 	delete(c.reactions, redacts)
+	_ = c.stores.DeleteReactionSnapshot(ctx, redacts)
 	c.emitReaction(snapshot, false)
+}
+
+func (c *Core) rememberReaction(ctx context.Context, snapshot reactionSnapshot) {
+	if snapshot.EventID == "" {
+		return
+	}
+	c.reactions[snapshot.EventID] = snapshot
+	_ = c.stores.SaveReactionSnapshot(ctx, snapshot)
+}
+
+func (c *Core) loadReactionSnapshots(ctx context.Context) error {
+	reactions, err := c.stores.LoadReactionSnapshots(ctx)
+	if err != nil {
+		return err
+	}
+	for _, snapshot := range reactions {
+		if snapshot.EventID != "" {
+			c.reactions[snapshot.EventID] = snapshot
+		}
+	}
+	return nil
 }
 
 func (c *Core) emitReaction(snapshot reactionSnapshot, added bool) {

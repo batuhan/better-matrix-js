@@ -330,12 +330,10 @@ func (c *Core) processEvent(ctx context.Context, evt *event.Event) {
 			RoomID:           evt.RoomID,
 			Sender:           evt.Sender,
 		}
-		if snapshot.EventID != "" {
-			c.reactions[snapshot.EventID] = snapshot
-		}
+		c.rememberReaction(ctx, snapshot)
 		c.emitReaction(snapshot, true)
 	case event.EventRedaction:
-		c.processRedaction(evt)
+		c.processRedaction(ctx, evt)
 	case event.EventEncrypted:
 		// CryptoHelper owns encrypted timeline events. It waits for missing room
 		// keys, requests sessions, then redispatches the decrypted logical event

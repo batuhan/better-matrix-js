@@ -18,11 +18,12 @@ import (
 )
 
 const (
-	cryptoStoreFile       = "crypto.json"
-	decryptionQueuePrefix = "pending-decryption/"
-	recoveryBackupFile    = "recovery_backup.json"
-	stateStoreFile        = "state.json"
-	nextBatchFile         = "next_batch"
+	cryptoStoreFile        = "crypto.json"
+	decryptionQueuePrefix  = "pending-decryption/"
+	reactionSnapshotPrefix = "reaction/"
+	recoveryBackupFile     = "recovery_backup.json"
+	stateStoreFile         = "state.json"
+	nextBatchFile          = "next_batch"
 )
 
 type byteStore interface {
@@ -30,6 +31,47 @@ type byteStore interface {
 	Get(ctx context.Context, key string) ([]byte, error)
 	List(ctx context.Context, prefix string) ([]string, error)
 	Set(ctx context.Context, key string, value []byte) error
+}
+
+func (bundle *storeBundle) LoadReactionSnapshots(ctx context.Context) ([]reactionSnapshot, error) {
+	if bundle == nil || bundle.kv == nil {
+		return nil, nil
+	}
+	keys, err := bundle.kv.List(ctx, bundle.prefix+reactionSnapshotPrefix)
+	if err != nil {
+		return nil, err
+	}
+	reactions := make([]reactionSnapshot, 0, len(keys))
+	for _, key := range keys {
+		raw, err := bundle.kv.Get(ctx, key)
+		if err != nil || raw == nil {
+			return nil, err
+		}
+		var snapshot reactionSnapshot
+		if err := json.Unmarshal(raw, &snapshot); err != nil {
+			return nil, err
+		}
+		reactions = append(reactions, snapshot)
+	}
+	return reactions, nil
+}
+
+func (bundle *storeBundle) SaveReactionSnapshot(ctx context.Context, snapshot reactionSnapshot) error {
+	if bundle == nil || bundle.kv == nil || snapshot.EventID == "" {
+		return nil
+	}
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		return err
+	}
+	return bundle.kv.Set(ctx, bundle.prefix+reactionSnapshotPrefix+snapshot.EventID.String(), raw)
+}
+
+func (bundle *storeBundle) DeleteReactionSnapshot(ctx context.Context, eventID id.EventID) error {
+	if bundle == nil || bundle.kv == nil || eventID == "" {
+		return nil
+	}
+	return bundle.kv.Delete(ctx, bundle.prefix+reactionSnapshotPrefix+eventID.String())
 }
 
 type storeBundle struct {

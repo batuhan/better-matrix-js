@@ -110,6 +110,9 @@ func (c *Core) handleInit(ctx context.Context, payload []byte) ([]byte, error) {
 	} else if err := c.savePendingDecryptions(ctx); err != nil {
 		return nil, err
 	}
+	if err := c.loadReactionSnapshots(ctx); err != nil {
+		return nil, err
+	}
 
 	if err := c.setupCrypto(ctx, req); err != nil {
 		return nil, err
