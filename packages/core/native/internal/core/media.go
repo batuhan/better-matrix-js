@@ -2,13 +2,8 @@ package core
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"maunium.net/go/mautrix"
@@ -124,8 +119,8 @@ func (c *Core) handlePostMediaMessage(ctx context.Context, payload []byte) ([]by
 		if err != nil {
 			return nil, err
 		}
-		file.URL = resp.ContentURI.String()
-		content.File = encryptedFileToEvent(file)
+		file.URL = id.ContentURIString(resp.ContentURI.String())
+		content.File = &file
 	} else {
 		resp, err := retryMatrix(ctx, func() (*mautrix.RespMediaUpload, error) {
 			return cli.UploadBytesWithName(ctx, plaintext, req.ContentType, req.Filename)
@@ -174,24 +169,6 @@ func (c *Core) handleDownloadMedia(ctx context.Context, payload []byte) ([]byte,
 	return json.Marshal(OutboundEvent{"bytesBase64": base64.StdEncoding.EncodeToString(data)})
 }
 
-// ts:export MatrixEncryptedFile
-type encryptedFile struct {
-	Hashes map[string]string `json:"hashes" ts:"{ sha256: string }"`
-	IV     string            `json:"iv"`
-	Key    encryptedFileKey  `json:"key" ts:"MatrixEncryptedFileKey"`
-	URL    string            `json:"url"`
-	V      string            `json:"v" ts:"\"v2\""`
-}
-
-// ts:export MatrixEncryptedFileKey
-type encryptedFileKey struct {
-	Alg    string   `json:"alg" ts:"\"A256CTR\""`
-	Ext    bool     `json:"ext" ts:"true"`
-	K      string   `json:"k"`
-	KeyOps []string `json:"key_ops" ts:"[\"encrypt\", \"decrypt\"]"`
-	Kty    string   `json:"kty" ts:"\"oct\""`
-}
-
 func (c *Core) handleUploadEncryptedMedia(ctx context.Context, payload []byte) ([]byte, error) {
 	cli, err := c.requireClient()
 	if err != nil {
@@ -215,7 +192,7 @@ func (c *Core) handleUploadEncryptedMedia(ctx context.Context, payload []byte) (
 	if err != nil {
 		return nil, err
 	}
-	file.URL = resp.ContentURI.String()
+	file.URL = id.ContentURIString(resp.ContentURI.String())
 	return json.Marshal(OutboundEvent{
 		"contentUri": resp.ContentURI.String(),
 		"file":       file,
@@ -225,7 +202,7 @@ func (c *Core) handleUploadEncryptedMedia(ctx context.Context, payload []byte) (
 
 // ts:export MatrixDownloadEncryptedMediaOptions
 type downloadEncryptedMediaReq struct {
-	File encryptedFile `json:"file" ts:"MatrixEncryptedFile"`
+	File event.EncryptedFileInfo `json:"file" ts:"MatrixEncryptedFile"`
 }
 
 func (c *Core) handleDownloadEncryptedMedia(ctx context.Context, payload []byte) ([]byte, error) {
@@ -237,7 +214,7 @@ func (c *Core) handleDownloadEncryptedMedia(ctx context.Context, payload []byte)
 	if err := json.Unmarshal(payload, &req); err != nil {
 		return nil, err
 	}
-	parsed, err := id.ParseContentURI(req.File.URL)
+	parsed, err := id.ParseContentURI(string(req.File.URL))
 	if err != nil {
 		return nil, err
 	}
@@ -254,81 +231,14 @@ func (c *Core) handleDownloadEncryptedMedia(ctx context.Context, payload []byte)
 	return json.Marshal(OutboundEvent{"bytesBase64": base64.StdEncoding.EncodeToString(plaintext)})
 }
 
-func encryptMedia(plaintext []byte) ([]byte, encryptedFile, error) {
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		return nil, encryptedFile{}, err
-	}
-	iv := make([]byte, aes.BlockSize)
-	if _, err := rand.Read(iv[:8]); err != nil {
-		return nil, encryptedFile{}, err
-	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, encryptedFile{}, err
-	}
-	ciphertext := make([]byte, len(plaintext))
-	cipher.NewCTR(block, iv).XORKeyStream(ciphertext, plaintext)
-	hash := sha256.Sum256(ciphertext)
-	return ciphertext, encryptedFile{
-		Hashes: map[string]string{
-			"sha256": base64.RawStdEncoding.EncodeToString(hash[:]),
-		},
-		IV: base64.RawStdEncoding.EncodeToString(iv),
-		Key: encryptedFileKey{
-			Alg:    "A256CTR",
-			Ext:    true,
-			K:      base64.RawURLEncoding.EncodeToString(key),
-			KeyOps: []string{"encrypt", "decrypt"},
-			Kty:    "oct",
-		},
-		V: "v2",
-	}, nil
+func encryptMedia(plaintext []byte) ([]byte, event.EncryptedFileInfo, error) {
+	file := attachment.NewEncryptedFile()
+	ciphertext := file.Encrypt(plaintext)
+	return ciphertext, event.EncryptedFileInfo{EncryptedFile: *file}, nil
 }
 
-func decryptMedia(ciphertext []byte, file encryptedFile) ([]byte, error) {
-	if expectedHash := file.Hashes["sha256"]; expectedHash != "" {
-		hash := sha256.Sum256(ciphertext)
-		if base64.RawStdEncoding.EncodeToString(hash[:]) != expectedHash {
-			return nil, fmt.Errorf("encrypted media sha256 hash mismatch")
-		}
-	}
-	key, err := base64.RawURLEncoding.DecodeString(file.Key.K)
-	if err != nil {
-		return nil, err
-	}
-	iv, err := base64.RawStdEncoding.DecodeString(file.IV)
-	if err != nil {
-		return nil, err
-	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	if len(iv) != aes.BlockSize {
-		return nil, fmt.Errorf("encrypted media IV must be %d bytes", aes.BlockSize)
-	}
-	plaintext := make([]byte, len(ciphertext))
-	cipher.NewCTR(block, iv).XORKeyStream(plaintext, ciphertext)
-	return plaintext, nil
-}
-
-func encryptedFileToEvent(file encryptedFile) *event.EncryptedFileInfo {
-	return &event.EncryptedFileInfo{
-		EncryptedFile: attachment.EncryptedFile{
-			Hashes:     attachment.EncryptedFileHashes{SHA256: file.Hashes["sha256"]},
-			InitVector: file.IV,
-			Key: attachment.JSONWebKey{
-				Algorithm:   file.Key.Alg,
-				Extractable: file.Key.Ext,
-				Key:         file.Key.K,
-				KeyOps:      file.Key.KeyOps,
-				KeyType:     file.Key.Kty,
-			},
-			Version: file.V,
-		},
-		URL: id.ContentURIString(file.URL),
-	}
+func decryptMedia(ciphertext []byte, file event.EncryptedFileInfo) ([]byte, error) {
+	return file.EncryptedFile.Decrypt(ciphertext)
 }
 
 func mediaMsgType(contentType string) event.MessageType {
@@ -357,20 +267,7 @@ func messageAttachments(content *event.MessageEventContent) []tsMediaAttachment 
 		attachment.ContentURI = &contentURI
 	}
 	if content.File != nil {
-		file := encryptedFileFromEvent(content.File)
-		attachment.EncryptedFile = &encryptedFile{
-			Hashes: file.Hashes,
-			IV:     file.IV,
-			Key: encryptedFileKey{
-				Alg:    file.Key.Alg,
-				Ext:    file.Key.Ext,
-				K:      file.Key.K,
-				KeyOps: file.Key.KeyOps,
-				Kty:    file.Key.Kty,
-			},
-			URL: file.URL,
-			V:   file.V,
-		}
+		attachment.EncryptedFile = content.File
 	}
 	if content.Info != nil {
 		info := tsMediaInfo{}
@@ -394,23 +291,4 @@ func messageAttachments(content *event.MessageEventContent) []tsMediaAttachment 
 		attachment.Info = &info
 	}
 	return []tsMediaAttachment{attachment}
-}
-
-func encryptedFileFromEvent(file *event.EncryptedFileInfo) encryptedFile {
-	if file == nil {
-		return encryptedFile{}
-	}
-	return encryptedFile{
-		Hashes: map[string]string{"sha256": file.Hashes.SHA256},
-		IV:     file.InitVector,
-		Key: encryptedFileKey{
-			Alg:    file.Key.Algorithm,
-			Ext:    file.Key.Extractable,
-			K:      file.Key.Key,
-			KeyOps: file.Key.KeyOps,
-			Kty:    file.Key.KeyType,
-		},
-		URL: string(file.URL),
-		V:   file.Version,
-	}
 }

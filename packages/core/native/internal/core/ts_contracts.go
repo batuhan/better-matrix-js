@@ -1,5 +1,7 @@
 package core
 
+import "maunium.net/go/mautrix/event"
+
 // ts:export MatrixRawEvent
 type tsRawEvent struct {
 	Content        map[string]any `json:"content"`
@@ -23,11 +25,11 @@ type tsMediaInfo struct {
 
 // ts:export MatrixMediaAttachment
 type tsMediaAttachment struct {
-	ContentURI    *string        `json:"contentUri,omitempty"`
-	EncryptedFile *encryptedFile `json:"encryptedFile,omitempty" ts:"MatrixEncryptedFile"`
-	Filename      *string        `json:"filename,omitempty"`
-	Info          *tsMediaInfo   `json:"info,omitempty"`
-	Msgtype       string         `json:"msgtype" ts:"\"m.image\" | \"m.video\" | \"m.audio\" | \"m.file\""`
+	ContentURI    *string                  `json:"contentUri,omitempty"`
+	EncryptedFile *event.EncryptedFileInfo `json:"encryptedFile,omitempty" ts:"MatrixEncryptedFile"`
+	Filename      *string                  `json:"filename,omitempty"`
+	Info          *tsMediaInfo             `json:"info,omitempty"`
+	Msgtype       string                   `json:"msgtype" ts:"\"m.image\" | \"m.video\" | \"m.audio\" | \"m.file\""`
 }
 
 // ts:export MatrixMessageEvent
@@ -119,9 +121,9 @@ type tsDownloadMediaResult struct {
 
 // ts:export MatrixUploadEncryptedMediaResult
 type tsUploadEncryptedMediaResult struct {
-	ContentURI string        `json:"contentUri"`
-	File       encryptedFile `json:"file" ts:"MatrixEncryptedFile"`
-	Raw        any           `json:"raw"`
+	ContentURI string                  `json:"contentUri"`
+	File       event.EncryptedFileInfo `json:"file" ts:"MatrixEncryptedFile"`
+	Raw        any                     `json:"raw"`
 }
 
 // ts:export MatrixOpenDMResult
