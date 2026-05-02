@@ -1,0 +1,72 @@
+package core
+
+const (
+	// ts:operation syncOnce sync_once MatrixSyncOnceOptions void optional
+	opSyncOnce = "sync_once"
+	// ts:operation startSync start_sync MatrixSyncStartOptions void optional
+	opStartSync = "start_sync"
+	// ts:operation stopSync stop_sync - void
+	opStopSync = "stop_sync"
+	// ts:operation init init MatrixCoreInitOptions MatrixWhoami
+	opInit = "init"
+	// ts:operation whoami whoami - MatrixWhoami
+	opWhoami = "whoami"
+	// ts:operation applySyncResponse apply_sync_response MatrixApplySyncResponseOptions void
+	opApplySyncResponse = "apply_sync_response"
+	// ts:operation postMessage post_message MatrixSendMessageOptions MatrixRawMessage
+	opPostMessage = "post_message"
+	// ts:operation postMediaMessage post_media_message MatrixSendMediaMessageOptions MatrixRawMessage
+	opPostMediaMessage = "post_media_message"
+	// ts:operation editMessage edit_message MatrixEditMessageOptions MatrixRawMessage
+	opEditMessage = "edit_message"
+	// ts:operation deleteMessage delete_message MatrixDeleteMessageOptions void
+	opDeleteMessage = "delete_message"
+	// ts:operation addReaction add_reaction MatrixReactionOptions MatrixRawMessage
+	opAddReaction = "add_reaction"
+	// ts:operation removeReaction remove_reaction MatrixReactionOptions void
+	opRemoveReaction = "remove_reaction"
+	// ts:operation sendEphemeralEvent send_ephemeral_event MatrixSendEphemeralEventOptions MatrixRawMessage
+	opSendEphemeralEvent = "send_ephemeral_event"
+	// ts:operation createBeeperStream create_beeper_stream MatrixCreateBeeperStreamOptions MatrixCreateBeeperStreamResult
+	opCreateBeeperStream = "create_beeper_stream"
+	// ts:operation registerBeeperStream register_beeper_stream MatrixRegisterBeeperStreamOptions void
+	opRegisterBeeperStream = "register_beeper_stream"
+	// ts:operation publishBeeperStream publish_beeper_stream MatrixBeeperStreamOptions void
+	opPublishBeeperStream = "publish_beeper_stream"
+	// ts:operation unsubscribeBeeperStream unsubscribe_beeper_stream MatrixBeeperStreamOptions void
+	opUnsubscribeBeeperStream = "unsubscribe_beeper_stream"
+	// ts:operation setTyping set_typing MatrixTypingOptions void
+	opSetTyping = "set_typing"
+	// ts:operation fetchMessage fetch_message MatrixFetchMessageOptions MatrixFetchMessageResult
+	opFetchMessage = "fetch_message"
+	// ts:operation fetchMessages fetch_messages MatrixFetchMessagesOptions MatrixFetchMessagesResult
+	opFetchMessages = "fetch_messages"
+	// ts:operation markRead mark_read MatrixMarkReadOptions void
+	opMarkRead = "mark_read"
+	// ts:operation uploadMedia upload_media MatrixUploadMediaOptions MatrixUploadMediaResult
+	opUploadMedia = "upload_media"
+	// ts:operation downloadMedia download_media MatrixDownloadMediaOptions MatrixDownloadMediaResult
+	opDownloadMedia = "download_media"
+	// ts:operation uploadEncryptedMedia upload_encrypted_media MatrixUploadMediaOptions MatrixUploadEncryptedMediaResult
+	opUploadEncryptedMedia = "upload_encrypted_media"
+	// ts:operation downloadEncryptedMedia download_encrypted_media MatrixDownloadEncryptedMediaOptions MatrixDownloadMediaResult
+	opDownloadEncryptedMedia = "download_encrypted_media"
+	// ts:operation fetchRoom fetch_room MatrixFetchRoomOptions MatrixRoomInfo
+	opFetchRoom = "fetch_room"
+	// ts:operation openDM open_dm MatrixOpenDMOptions MatrixOpenDMResult
+	opOpenDM = "open_dm"
+	// ts:operation joinRoom join_room MatrixJoinRoomOptions MatrixJoinRoomResult
+	opJoinRoom = "join_room"
+	// ts:operation leaveRoom leave_room MatrixLeaveRoomOptions void
+	opLeaveRoom = "leave_room"
+	// ts:operation inviteUser invite_user MatrixInviteUserOptions void
+	opInviteUser = "invite_user"
+	// ts:operation fetchJoinedRooms fetch_joined_rooms - MatrixJoinedRoomsResult
+	opFetchJoinedRooms = "fetch_joined_rooms"
+	// ts:operation getUser get_user MatrixGetUserOptions MatrixUserInfo
+	opGetUser = "get_user"
+	// ts:operation listRoomThreads list_room_threads MatrixListRoomThreadsOptions MatrixListRoomThreadsResult
+	opListRoomThreads = "list_room_threads"
+	// ts:operation close close - void
+	opClose = "close"
+)

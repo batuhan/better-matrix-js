@@ -56,13 +56,13 @@ func New(emit func(OutboundEvent), host ...RuntimeHost) *Core {
 }
 
 func (c *Core) Handle(ctx context.Context, op string, payload []byte) ([]byte, error) {
-	if op == "sync_once" {
+	if op == opSyncOnce {
 		return c.handleSyncOnce(ctx, payload)
 	}
-	if op == "start_sync" {
+	if op == opStartSync {
 		return c.handleStartSync(payload)
 	}
-	if op == "stop_sync" {
+	if op == opStopSync {
 		return c.handleStopSync()
 	}
 
@@ -70,67 +70,67 @@ func (c *Core) Handle(ctx context.Context, op string, payload []byte) ([]byte, e
 	defer c.mu.Unlock()
 
 	switch op {
-	case "init":
+	case opInit:
 		return c.handleInit(ctx, payload)
-	case "whoami":
+	case opWhoami:
 		return c.handleWhoami(ctx)
-	case "apply_sync_response":
+	case opApplySyncResponse:
 		return c.handleApplySyncResponse(ctx, payload)
-	case "post_message":
+	case opPostMessage:
 		return c.handlePostMessage(ctx, payload)
-	case "post_media_message":
+	case opPostMediaMessage:
 		return c.handlePostMediaMessage(ctx, payload)
-	case "edit_message":
+	case opEditMessage:
 		return c.handleEditMessage(ctx, payload)
-	case "delete_message":
+	case opDeleteMessage:
 		return c.handleDeleteMessage(ctx, payload)
-	case "add_reaction":
+	case opAddReaction:
 		return c.handleAddReaction(ctx, payload)
-	case "remove_reaction":
+	case opRemoveReaction:
 		return c.handleRemoveReaction(ctx, payload)
-	case "send_ephemeral_event":
+	case opSendEphemeralEvent:
 		return c.handleSendEphemeralEvent(ctx, payload)
-	case "create_beeper_stream":
+	case opCreateBeeperStream:
 		return c.handleCreateBeeperStream(ctx, payload)
-	case "register_beeper_stream":
+	case opRegisterBeeperStream:
 		return c.handleRegisterBeeperStream(ctx, payload)
-	case "publish_beeper_stream":
+	case opPublishBeeperStream:
 		return c.handlePublishBeeperStream(ctx, payload)
-	case "unsubscribe_beeper_stream":
+	case opUnsubscribeBeeperStream:
 		return c.handleUnsubscribeBeeperStream(payload)
-	case "set_typing":
+	case opSetTyping:
 		return c.handleSetTyping(ctx, payload)
-	case "fetch_message":
+	case opFetchMessage:
 		return c.handleFetchMessage(ctx, payload)
-	case "fetch_messages":
+	case opFetchMessages:
 		return c.handleFetchMessages(ctx, payload)
-	case "mark_read":
+	case opMarkRead:
 		return c.handleMarkRead(ctx, payload)
-	case "upload_media":
+	case opUploadMedia:
 		return c.handleUploadMedia(ctx, payload)
-	case "download_media":
+	case opDownloadMedia:
 		return c.handleDownloadMedia(ctx, payload)
-	case "upload_encrypted_media":
+	case opUploadEncryptedMedia:
 		return c.handleUploadEncryptedMedia(ctx, payload)
-	case "download_encrypted_media":
+	case opDownloadEncryptedMedia:
 		return c.handleDownloadEncryptedMedia(ctx, payload)
-	case "fetch_room":
+	case opFetchRoom:
 		return c.handleFetchRoom(ctx, payload)
-	case "open_dm":
+	case opOpenDM:
 		return c.handleOpenDM(ctx, payload)
-	case "join_room":
+	case opJoinRoom:
 		return c.handleJoinRoom(ctx, payload)
-	case "leave_room":
+	case opLeaveRoom:
 		return c.handleLeaveRoom(ctx, payload)
-	case "invite_user":
+	case opInviteUser:
 		return c.handleInviteUser(ctx, payload)
-	case "fetch_joined_rooms":
+	case opFetchJoinedRooms:
 		return c.handleFetchJoinedRooms(ctx)
-	case "get_user":
+	case opGetUser:
 		return c.handleGetUser(ctx, payload)
-	case "list_room_threads":
+	case opListRoomThreads:
 		return c.handleListRoomThreads(ctx, payload)
-	case "close":
+	case opClose:
 		return c.handleClose()
 	default:
 		return nil, fmt.Errorf("unknown matrix core operation %q", op)

@@ -1,50 +1,10 @@
 import type {
-  MatrixApplySyncResponseOptions,
-  MatrixBeeperStreamOptions,
-  MatrixCoreInitOptions,
-  MatrixCreateBeeperStreamOptions,
-  MatrixCreateBeeperStreamResult,
-  MatrixDeleteMessageOptions,
-  MatrixDownloadEncryptedMediaOptions,
-  MatrixDownloadMediaOptions,
-  MatrixDownloadMediaResult,
-  MatrixEditMessageOptions,
-  MatrixFetchMessageOptions,
-  MatrixFetchMessageResult,
-  MatrixFetchMessagesOptions,
-  MatrixFetchMessagesResult,
-  MatrixFetchRoomOptions,
-  MatrixGetUserOptions,
   MatrixInviteEvent,
-  MatrixInviteUserOptions,
-  MatrixJoinRoomOptions,
-  MatrixJoinRoomResult,
-  MatrixJoinedRoomsResult,
-  MatrixLeaveRoomOptions,
-  MatrixListRoomThreadsOptions,
-  MatrixListRoomThreadsResult,
-  MatrixMarkReadOptions,
   MatrixMessageEvent,
-  MatrixOpenDMOptions,
-  MatrixOpenDMResult,
   MatrixRawEvent,
-  MatrixRawMessage,
   MatrixReactionEvent,
-  MatrixReactionOptions,
-  MatrixRegisterBeeperStreamOptions,
-  MatrixRoomInfo,
-  MatrixSendEphemeralEventOptions,
-  MatrixSendMediaMessageOptions,
-  MatrixSendMessageOptions,
-  MatrixSyncOnceOptions,
-  MatrixSyncStartOptions,
-  MatrixTypingOptions,
-  MatrixUploadEncryptedMediaResult,
-  MatrixUploadMediaOptions,
-  MatrixUploadMediaResult,
-  MatrixUserInfo,
-  MatrixWhoami,
 } from "./generated-runtime-types";
+import type { MatrixCoreOperations } from "./generated-runtime-operations";
 
 export type {
   MatrixApplySyncResponseOptions,
@@ -144,42 +104,10 @@ export type MatrixCoreEvent =
       type: "sync_status";
     };
 
-export interface MatrixCore {
-  addReaction(options: MatrixReactionOptions): Promise<MatrixRawMessage>;
-  applySyncResponse(options: MatrixApplySyncResponseOptions): Promise<void>;
-  close(): Promise<void>;
-  createBeeperStream(options: MatrixCreateBeeperStreamOptions): Promise<MatrixCreateBeeperStreamResult>;
-  deleteMessage(options: MatrixDeleteMessageOptions): Promise<void>;
-  downloadEncryptedMedia(options: MatrixDownloadEncryptedMediaOptions): Promise<MatrixDownloadMediaResult>;
-  downloadMedia(options: MatrixDownloadMediaOptions): Promise<MatrixDownloadMediaResult>;
-  editMessage(options: MatrixEditMessageOptions): Promise<MatrixRawMessage>;
-  fetchMessage(options: MatrixFetchMessageOptions): Promise<MatrixFetchMessageResult>;
-  fetchMessages(options: MatrixFetchMessagesOptions): Promise<MatrixFetchMessagesResult>;
-  fetchRoom(options: MatrixFetchRoomOptions): Promise<MatrixRoomInfo>;
-  fetchJoinedRooms(): Promise<MatrixJoinedRoomsResult>;
-  getUser(options: MatrixGetUserOptions): Promise<MatrixUserInfo>;
-  init(options: MatrixCoreInitOptions): Promise<MatrixWhoami>;
-  inviteUser(options: MatrixInviteUserOptions): Promise<void>;
-  joinRoom(options: MatrixJoinRoomOptions): Promise<MatrixJoinRoomResult>;
-  leaveRoom(options: MatrixLeaveRoomOptions): Promise<void>;
-  listRoomThreads(options: MatrixListRoomThreadsOptions): Promise<MatrixListRoomThreadsResult>;
-  markRead(options: MatrixMarkReadOptions): Promise<void>;
+export type { MatrixCoreOperations } from "./generated-runtime-operations";
+
+export interface MatrixCore extends MatrixCoreOperations {
   onEvent(listener: (event: MatrixCoreEvent) => void): () => void;
-  openDM(options: MatrixOpenDMOptions): Promise<MatrixOpenDMResult>;
-  postMediaMessage(options: MatrixSendMediaMessageOptions): Promise<MatrixRawMessage>;
-  postMessage(options: MatrixSendMessageOptions): Promise<MatrixRawMessage>;
-  publishBeeperStream(options: MatrixBeeperStreamOptions): Promise<void>;
-  registerBeeperStream(options: MatrixRegisterBeeperStreamOptions): Promise<void>;
-  removeReaction(options: MatrixReactionOptions): Promise<void>;
-  sendEphemeralEvent(options: MatrixSendEphemeralEventOptions): Promise<MatrixRawMessage>;
-  setTyping(options: MatrixTypingOptions): Promise<void>;
-  startSync(options?: MatrixSyncStartOptions): Promise<void>;
-  stopSync(): Promise<void>;
-  syncOnce(options?: MatrixSyncOnceOptions): Promise<void>;
-  uploadEncryptedMedia(options: MatrixUploadMediaOptions): Promise<MatrixUploadEncryptedMediaResult>;
-  uploadMedia(options: MatrixUploadMediaOptions): Promise<MatrixUploadMediaResult>;
-  unsubscribeBeeperStream(options: MatrixBeeperStreamOptions): Promise<void>;
-  whoami(): Promise<MatrixWhoami>;
 }
 
 export interface MatrixCoreHost {
