@@ -5,8 +5,8 @@
   "durable_objects": {
     "bindings": [
       {
-        "name": "MATRIX_CORE",
-        "class_name": "MatrixCoreObject"
+        "name": "MATRIX_CLIENT",
+        "class_name": "MatrixClientObject"
       },
       {
         "name": "MATRIX_SYNC",
@@ -17,7 +17,7 @@
   "migrations": [
     {
       "tag": "v1",
-      "new_classes": ["MatrixCoreObject", "MatrixSyncObject"]
+      "new_classes": ["MatrixClientObject", "MatrixSyncObject"]
     }
   ],
   "vars": {

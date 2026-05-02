@@ -22,29 +22,6 @@ export type {
   MatrixRoomThreadSummary,
 } from "./generated-runtime-types";
 
-export interface MatrixLoginOptions {
-  deviceId?: string;
-  homeserverUrl: string;
-  initialDeviceDisplayName?: string;
-  password: string;
-  username: string;
-}
-
-export interface MatrixTokenLoginOptions {
-  deviceId?: string;
-  homeserverUrl: string;
-  initialDeviceDisplayName?: string;
-  loginToken: string;
-  type?: "m.login.token" | "org.matrix.login.jwt";
-}
-
-export interface MatrixLoginSession {
-  accessToken: string;
-  deviceId: string;
-  homeserverUrl: string;
-  userId: string;
-}
-
 export interface MatrixCoreInitOptions {
   accessToken: string;
   catchUpOnStart?: boolean;

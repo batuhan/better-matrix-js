@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFileMatrixStore } from "../packages/state-file/dist/index.js";
-import { loadMatrixCoreFromNodePackage } from "../packages/core/dist/node.js";
+import { createMatrixClient } from "../packages/core/dist/node.js";
 
 const DEFAULT_TIMEOUT_MS = 90_000;
 
@@ -26,31 +26,25 @@ async function createAccount(role, runDir) {
   const recoveryKey =
     optionalEnv(`MATRIX_${role}_RECOVERY_KEY`) ?? optionalEnv(`MATRIX_${role}_RECOVERY_CODE`);
   const events = [];
-  const core = await loadMatrixCoreFromNodePackage({
-    host: {
-      log(level, message, data) {
-        if (level === "error" || level === "warn") {
-          console.error(`[${role}] ${level}: ${message}`, data ?? "");
-        }
-      },
-      store: createFileMatrixStore(join(runDir, role.toLowerCase())),
+  const client = createMatrixClient({
+    homeserver: homeserverUrl,
+    logger(level, message, data) {
+      if (level === "error" || level === "warn") {
+        console.error(`[${role}] ${level}: ${message}`, data ?? "");
+      }
     },
+    recoveryKey,
+    store: createFileMatrixStore(join(runDir, role.toLowerCase())),
+    token: accessToken,
   });
-  core.onEvent((event) => events.push(event));
-  const initOptions = {
-    accessToken,
-    homeserverUrl,
-  };
-  if (recoveryKey) {
-    initOptions.recoveryKey = recoveryKey;
-  }
-  const whoami = await core.init(initOptions);
-  return { core, events, role, userId: whoami.userId };
+  client.events.on((event) => events.push(event));
+  const whoami = await client.connect();
+  return { client, events, role, userId: whoami.userId };
 }
 
-async function sync(core, count = 1, timeoutMs = 3_000) {
+async function sync(client, count = 1, timeoutMs = 3_000) {
   for (let index = 0; index < count; index += 1) {
-    await core.syncOnce({ timeoutMs });
+    await client.sync.once({ timeoutMs });
   }
 }
 
@@ -68,9 +62,9 @@ async function retry(label, fn, timeoutMs = 30_000) {
   throw new Error(`${label} timed out: ${lastError?.message ?? lastError}`);
 }
 
-async function joinRoomIfNeeded(core, roomId) {
+async function joinRoomIfNeeded(client, roomId) {
   try {
-    await core.joinRoom({ roomIdOrAlias: roomId });
+    await client.rooms.join({ roomIdOrAlias: roomId });
   } catch (error) {
     if (!String(error?.message ?? error).includes("already in the room")) {
       throw error;
@@ -81,7 +75,7 @@ async function joinRoomIfNeeded(core, roomId) {
 async function syncUntil(label, account, predicate, timeoutMs = 45_000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
-    await sync(account.core);
+    await sync(account.client);
     const match = predicate();
     if (match) {
       return match;
@@ -93,32 +87,32 @@ async function syncUntil(label, account, predicate, timeoutMs = 45_000) {
 function findMessage(events, roomId, body) {
   return events.find(
     (event) =>
-      event.type === "message" &&
-      event.event.roomId === roomId &&
-      event.event.body === body
-  )?.event;
+      event.kind === "message" &&
+      event.roomId === roomId &&
+      event.text === body
+  );
 }
 
 function findReaction(events, roomId, messageId, key) {
   return events.find(
     (event) =>
-      event.type === "reaction" &&
-      event.event.roomId === roomId &&
-      event.event.relatesToEventId === messageId &&
-      event.event.key === key &&
-      event.event.added !== false
-  )?.event;
+      event.kind === "reaction" &&
+      event.roomId === roomId &&
+      event.relatesTo === messageId &&
+      event.key === key &&
+      event.added !== false
+  );
 }
 
 function findReactionRemoval(events, roomId, messageId, key) {
   return events.find(
     (event) =>
-      event.type === "reaction" &&
-      event.event.roomId === roomId &&
-      event.event.relatesToEventId === messageId &&
-      event.event.key === key &&
-      event.event.added === false
-  )?.event;
+      event.kind === "reaction" &&
+      event.roomId === roomId &&
+      event.relatesTo === messageId &&
+      event.key === key &&
+      event.added === false
+  );
 }
 
 async function main() {
@@ -133,76 +127,76 @@ async function main() {
       createAccount("PEER", runDir),
     ]);
 
-    await Promise.all([sync(bot.core), sync(peer.core)]);
-    const dm = await bot.core.openDM({ userId: peer.userId });
-    await retry("peer join", async () => joinRoomIfNeeded(peer.core, dm.roomId), timeoutMs);
-    await Promise.all([sync(bot.core, 5), sync(peer.core, 5)]);
+    await Promise.all([sync(bot.client), sync(peer.client)]);
+    const dm = await bot.client.rooms.openDM({ userId: peer.userId });
+    await retry("peer join", async () => joinRoomIfNeeded(peer.client, dm.roomId), timeoutMs);
+    await Promise.all([sync(bot.client, 5), sync(peer.client, 5)]);
 
-    const room = await bot.core.fetchRoom({ roomId: dm.roomId });
+    const room = await bot.client.rooms.get({ roomId: dm.roomId });
     if (!room.encrypted) {
       throw new Error(`Expected encrypted room, got ${JSON.stringify(room)}`);
     }
 
     const botText = `hello from bot ${Date.now()}`;
-    const botMessage = await bot.core.postMessage({ body: botText, roomId: dm.roomId });
+    const botMessage = await bot.client.messages.send({ text: botText, roomId: dm.roomId });
     const seenByPeer = await syncUntil("peer receives bot message", peer, () =>
       findMessage(peer.events, dm.roomId, botText),
       timeoutMs
     );
-    if (!seenByPeer.isEncrypted) {
+    if (!seenByPeer.encrypted) {
       throw new Error("Peer received bot message, but it was not marked encrypted");
     }
-    await Promise.all([sync(bot.core, 5), sync(peer.core, 5)]);
+    await Promise.all([sync(bot.client, 5), sync(peer.client, 5)]);
 
     const peerText = `hello from peer ${Date.now()}`;
-    const peerMessage = await peer.core.postMessage({ body: peerText, roomId: dm.roomId });
+    const peerMessage = await peer.client.messages.send({ text: peerText, roomId: dm.roomId });
     const seenByBot = await syncUntil("bot receives peer message", bot, () =>
       findMessage(bot.events, dm.roomId, peerText),
       timeoutMs
     );
-    if (!seenByBot.isEncrypted) {
+    if (!seenByBot.encrypted) {
       throw new Error("Bot received peer message, but it was not marked encrypted");
     }
 
-    const fetched = await peer.core.fetchMessage({
-      messageId: botMessage.eventId,
+    const fetched = await peer.client.messages.get({
+      eventId: botMessage.eventId,
       roomId: dm.roomId,
     });
-    if (fetched.message?.body !== botText || !fetched.message.isEncrypted) {
+    if (fetched.message?.text !== botText || !fetched.message.encrypted) {
       throw new Error(`Fetched encrypted message mismatch: ${JSON.stringify(fetched)}`);
     }
 
-    await peer.core.addReaction({
-      emoji: "✅",
-      messageId: botMessage.eventId,
+    await peer.client.reactions.send({
+      key: "✅",
+      eventId: botMessage.eventId,
       roomId: dm.roomId,
     });
     await syncUntil("bot receives reaction", bot, () =>
       findReaction(bot.events, dm.roomId, botMessage.eventId, "✅"),
       timeoutMs
     );
-    await peer.core.removeReaction({
-      emoji: "✅",
-      messageId: botMessage.eventId,
+    await peer.client.reactions.redact({
+      key: "✅",
+      eventId: botMessage.eventId,
       roomId: dm.roomId,
     });
     await syncUntil("bot receives reaction removal", bot, () =>
       findReactionRemoval(bot.events, dm.roomId, botMessage.eventId, "✅"),
       timeoutMs
     );
-    await bot.core.markRead({ eventId: peerMessage.eventId, roomId: dm.roomId });
+    await bot.client.messages.markRead({ eventId: peerMessage.eventId, roomId: dm.roomId });
 
     const mediaPayload = Buffer.from("better-matrix-js media", "utf8");
-    const media = await bot.core.postMediaMessage({
-      bytesBase64: mediaPayload.toString("base64"),
+    const media = await bot.client.messages.sendMedia({
+      bytes: mediaPayload,
       contentType: "text/plain",
       filename: "better-matrix-js-e2e.txt",
       roomId: dm.roomId,
     });
     const receivedMedia = await syncUntil("peer receives media", peer, () =>
       peer.events.find(
-        (event) => event.type === "message" && event.event.eventId === media.eventId
-      )?.event,
+        (event) => event.kind === "message" && event.eventId === media.eventId
+      ),
       timeoutMs
     );
     const attachment = receivedMedia.attachments?.[0];
@@ -210,14 +204,14 @@ async function main() {
       throw new Error(`Missing media attachment: ${JSON.stringify(receivedMedia)}`);
     }
     const downloaded = attachment.encryptedFile
-      ? await peer.core.downloadEncryptedMedia({ file: attachment.encryptedFile })
-      : await peer.core.downloadMedia({ contentUri: attachment.contentUri });
-    const downloadedText = Buffer.from(downloaded.bytesBase64, "base64").toString("utf8");
+      ? await peer.client.media.downloadEncrypted({ file: attachment.encryptedFile })
+      : await peer.client.media.download({ contentUri: attachment.contentUri });
+    const downloadedText = Buffer.from(downloaded.bytes).toString("utf8");
     if (downloadedText !== mediaPayload.toString("utf8")) {
       throw new Error(`Media roundtrip mismatch: ${downloadedText}`);
     }
 
-    await Promise.all([bot.core.close(), peer.core.close()]);
+    await Promise.all([bot.client.close(), peer.client.close()]);
     console.log("ok");
   } finally {
     if (!keepStore) {

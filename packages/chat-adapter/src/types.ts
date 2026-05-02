@@ -9,10 +9,8 @@ export interface MatrixChatThreadRef {
   roomId: string;
 }
 
-export interface MatrixAdapterConfig {
-  client?: MatrixClient;
+interface MatrixAdapterBaseConfig {
   commandPrefix?: string;
-  createClient?: () => MatrixClient | Promise<MatrixClient>;
   deviceId?: string;
   homeserver?: string;
   initialSync?: "persisted" | "latest" | "catchUp";
@@ -39,6 +37,23 @@ export interface MatrixAdapterConfig {
   wasmModule?: WebAssembly.Module;
   wasmUrl?: string | URL;
 }
+
+export type MatrixAdapterConfig =
+  | (MatrixAdapterBaseConfig & {
+      client: MatrixClient;
+      createClient?: never;
+      token?: string;
+    })
+  | (MatrixAdapterBaseConfig & {
+      client?: never;
+      createClient: () => MatrixClient | Promise<MatrixClient>;
+      token?: string;
+    })
+  | (MatrixAdapterBaseConfig & {
+      client?: never;
+      createClient?: never;
+      token: string;
+    });
 
 export interface MatrixRawMessage {
   attachments?: MatrixAttachment[];

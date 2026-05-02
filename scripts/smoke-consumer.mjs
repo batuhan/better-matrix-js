@@ -37,10 +37,10 @@ const { stdout } = await execFileAsync(
       import * as cf from "@better-matrix-js/cloudflare";
       import * as adapter from "@better-matrix-js/chat-adapter";
       const checks = {
-        core: ["createMatrixClient"].every((key) => key in core),
+        core: ["createMatrixClient", "createMatrixLogin"].every((key) => key in core),
         node: ["createMatrixClient"].every((key) => key in node),
         cloudflare: ["createCloudflareKVMatrixStore", "createDurableObjectMatrixStore", "MatrixSyncDurableObject"].every((key) => key in cf),
-        adapter: ["createMatrixAdapter", "loginMatrix"].every((key) => key in adapter),
+        adapter: ["createMatrixAdapter"].every((key) => key in adapter),
       };
       if (!Object.values(checks).every(Boolean)) {
         throw new Error(JSON.stringify(checks));

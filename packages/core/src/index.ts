@@ -1,5 +1,6 @@
-export { base64ToBytes, bytesToBase64, copyBytes } from "./bytes";
+export { copyBytes } from "./bytes";
 export { createMatrixClient } from "./client";
+export { createMatrixLogin } from "./login";
 export type {
   MatrixClient,
   MatrixBeeper,
@@ -12,6 +13,12 @@ export type {
   MatrixTyping,
   MatrixUsers,
 } from "./client";
+export type {
+  MatrixLogin,
+  MatrixLoginOptions,
+  MatrixPasswordLoginOptions,
+  MatrixTokenLoginOptions,
+} from "./login";
 export type {
   ApplySyncResponseOptions,
   CreateBeeperStreamOptions,

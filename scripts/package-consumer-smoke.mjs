@@ -87,10 +87,10 @@ try {
         import * as adapter from "@better-matrix-js/chat-adapter";
 
         const checks = {
-          core: ["createMatrixClient"].every((key) => key in core),
+          core: ["createMatrixClient", "createMatrixLogin"].every((key) => key in core),
           node: ["createMatrixClient"].every((key) => key in node),
           cloudflare: ["createCloudflareKVMatrixStore", "createDurableObjectMatrixStore", "MatrixSyncDurableObject"].every((key) => key in cloudflare),
-          adapter: ["createMatrixAdapter", "MatrixAdapter", "MatrixFormatConverter", "loginMatrix"].every((key) => key in adapter),
+          adapter: ["createMatrixAdapter", "MatrixAdapter", "MatrixFormatConverter"].every((key) => key in adapter),
         };
 
         if (!Object.values(checks).every(Boolean)) {

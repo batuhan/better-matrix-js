@@ -2,8 +2,9 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Chat } from "chat";
-import { loadMatrixCoreFromNodePackage } from "better-matrix-js/node";
-import { createMatrixAdapter, loginMatrix } from "@better-matrix-js/chat-adapter";
+import { createMatrixLogin } from "better-matrix-js";
+import { createMatrixClient } from "better-matrix-js/node";
+import { createMatrixAdapter } from "@better-matrix-js/chat-adapter";
 import { FileState, MatrixState } from "./file-state.mjs";
 
 const loremSentenceCorpus = [
@@ -94,18 +95,26 @@ async function main() {
   console.log(`invited=${inviteUserId}`);
 
   const matrix = createMatrixAdapter({
-    accessToken: login.accessToken,
-    createCore: () =>
-      loadMatrixCoreFromNodePackage({
-        host: { state: new MatrixState(state, "matrix-core") },
+    createClient: () =>
+      createMatrixClient({
+        deviceId: process.env.MATRIX_DEVICE_ID || login.deviceId,
+        homeserver: homeserverUrl,
+        initialSync: readInitialSyncMode(),
+        recoveryKey: process.env.MATRIX_RECOVERY_KEY,
+        since: process.env.MATRIX_INITIAL_SYNC_SINCE,
+        store: new MatrixState(state, "matrix-client"),
+        token: login.accessToken,
+        userId: process.env.MATRIX_USER_ID || login.userId,
+        verifyRecoveryOnStart: process.env.MATRIX_VERIFY_RECOVERY_ON_START === "1",
       }),
     deviceId: process.env.MATRIX_DEVICE_ID || login.deviceId,
-    homeserverUrl,
-    initialSyncMode: readInitialSyncMode(),
-    initialSyncSince: process.env.MATRIX_INITIAL_SYNC_SINCE,
+    homeserver: homeserverUrl,
+    initialSync: readInitialSyncMode(),
+    since: process.env.MATRIX_INITIAL_SYNC_SINCE,
     inviteAutoJoin: { inviterAllowlist: [inviteUserId] },
     polling: { timeoutMs: 10_000 },
     recoveryKey: process.env.MATRIX_RECOVERY_KEY,
+    token: login.accessToken,
     userId: process.env.MATRIX_USER_ID || login.userId,
     verifyRecoveryOnStart: process.env.MATRIX_VERIFY_RECOVERY_ON_START === "1",
   });
@@ -161,7 +170,7 @@ function logTiming(step, startedAt) {
 
 function readInitialSyncMode() {
   if (process.env.MATRIX_INITIAL_SYNC_MODE) return process.env.MATRIX_INITIAL_SYNC_MODE;
-  if (process.env.MATRIX_CATCH_UP_ON_START === "1") return "catch_up";
+  if (process.env.MATRIX_CATCH_UP_ON_START === "1") return "catchUp";
   if (process.env.MATRIX_CATCH_UP_ON_START === "0") return "latest";
   return undefined;
 }
@@ -369,13 +378,14 @@ async function resolveLogin(homeserverUrl, state) {
     return cached;
   }
   console.log("login_session_cache=miss");
-  const login = await loginMatrix({
-    homeserverUrl,
+  const login = await createMatrixLogin({
+    homeserver: homeserverUrl,
     initialDeviceDisplayName: "matrix-chat-sdk streaming smoke",
+  }).password({
     password: process.env.MATRIX_PASSWORD,
     username: process.env.MATRIX_USERNAME,
   });
-  const session = { ...login, username: process.env.MATRIX_USERNAME };
+  const session = { ...login, homeserverUrl: login.homeserver, username: process.env.MATRIX_USERNAME };
   await state.set("beeper-streaming-smoke:login-session", session);
   return session;
 }

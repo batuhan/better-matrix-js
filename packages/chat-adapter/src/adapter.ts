@@ -1,6 +1,4 @@
 import {
-  base64ToBytes,
-  bytesToBase64,
   createMatrixClient,
   type MatrixAttachment as MatrixClientAttachment,
   type MatrixClient,
@@ -730,6 +728,9 @@ export class MatrixAdapter {
   }
 
   #clientOptions() {
+    if (!this.#config.token) {
+      throw new Error("Matrix adapter requires token unless client or createClient is provided.");
+    }
     const options = {
       homeserver: this.#homeserverUrl,
       store: this.#config.store ?? this.#chatStateStore(),
@@ -1069,8 +1070,8 @@ class ChatMatrixState implements MatrixStore {
   }
 
   async get(key: string): Promise<Uint8Array | null> {
-    const value = await this.#state.get<string>(this.#key(key));
-    return typeof value === "string" ? base64ToBytes(value) : null;
+    const value = await this.#state.get<number[]>(this.#key(key));
+    return Array.isArray(value) ? Uint8Array.from(value) : null;
   }
 
   async list(prefix: string): Promise<string[]> {
@@ -1078,7 +1079,7 @@ class ChatMatrixState implements MatrixStore {
   }
 
   async set(key: string, value: Uint8Array): Promise<void> {
-    await this.#state.set(this.#key(key), bytesToBase64(value));
+    await this.#state.set(this.#key(key), [...value]);
     const keys = await this.#readIndex();
     if (!keys.has(key)) {
       keys.add(key);

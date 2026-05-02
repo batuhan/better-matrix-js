@@ -40,17 +40,18 @@ That's it. The adapter starts long-polling `/sync` automatically and forwards Ma
 If you don't have an access token yet:
 
 ```ts
-import { loginMatrix } from "@better-matrix-js/chat-adapter";
+import { createMatrixLogin } from "better-matrix-js";
 
-const { accessToken } = await loginMatrix({
+const { accessToken } = await createMatrixLogin({
   homeserver: "https://matrix.example.org",
+  initialDeviceDisplayName: "my bot",
+}).password({
   username: "bot",
   password: process.env.MATRIX_PASSWORD!,
-  initialDeviceDisplayName: "my bot",
 });
 ```
 
-There's also `loginMatrixWithToken()` for token / JWT login.
+There's also `.token()` for token / JWT login.
 
 ## Streaming responses (AI bots)
 
@@ -100,9 +101,9 @@ matrix.channelIdFromThreadId(threadId);
 
 ```ts
 createMatrixAdapter({
-  accessToken,                                  // required
-  homeserverUrl,                                // required
-  core | createCore | wasmModule | wasmBytes | wasmUrl, // pick one
+  token,                                        // required
+  homeserver,                                   // optional, defaults to Beeper
+  client | createClient | wasmModule | wasmBytes | wasmUrl, // optional
   recoveryKey | recoveryCode | pickleKey,       // optional, for E2EE
   inviteAutoJoin: { inviterAllowlist },         // optional
   roomAllowlist,                                // optional

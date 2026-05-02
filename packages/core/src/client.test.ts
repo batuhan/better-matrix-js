@@ -1,0 +1,129 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createMatrixClient } from "./client";
+
+interface RuntimeCall {
+  coreId: string;
+  operation: string;
+  payload: Record<string, unknown>;
+}
+
+const originalCreate = globalThis.__matrixCoreCreate;
+const originalCall = globalThis.__matrixCoreCall;
+
+afterEach(() => {
+  globalThis.__matrixCoreCreate = originalCreate;
+  globalThis.__matrixCoreCall = originalCall;
+});
+
+describe("createMatrixClient", () => {
+  it("maps the public message API to the runtime contract", async () => {
+    const calls = installRuntime({
+      init: { deviceId: "DEVICE", userId: "@bot:example.com" },
+      mark_read: {},
+      post_media_message: { eventId: "$media", raw: {}, roomId: "!room:example.com" },
+      post_message: { eventId: "$message", raw: {}, roomId: "!room:example.com" },
+    });
+    const client = createMatrixClient({
+      homeserver: "https://matrix.example.com",
+      token: "token",
+      wasmModule: {} as WebAssembly.Module,
+    });
+
+    await client.connect();
+    await client.messages.send({
+      html: "<strong>Hello</strong>",
+      mentions: { userIds: ["@alice:example.com"] },
+      replyTo: "$parent",
+      roomId: "!room:example.com",
+      text: "Hello",
+      threadRoot: "$thread",
+    });
+    await client.messages.sendMedia({
+      bytes: new Uint8Array([1, 2, 3]),
+      contentType: "text/plain",
+      filename: "note.txt",
+      kind: "file",
+      roomId: "!room:example.com",
+    });
+    await client.messages.markRead({ eventId: "$message", roomId: "!room:example.com" });
+
+    expect(calls.map((call) => call.operation)).toEqual([
+      "init",
+      "post_message",
+      "post_media_message",
+      "mark_read",
+    ]);
+    expect(calls[1]?.payload).toMatchObject({
+      body: "Hello",
+      formattedBody: "<strong>Hello</strong>",
+      replyToEventId: "$parent",
+      roomId: "!room:example.com",
+      threadRootEventId: "$thread",
+    });
+    expect(calls[2]?.payload).toMatchObject({
+      bytesBase64: "AQID",
+      contentType: "text/plain",
+      filename: "note.txt",
+      msgtype: "m.file",
+      roomId: "!room:example.com",
+    });
+    expect(calls[3]?.payload).toEqual({ eventId: "$message", roomId: "!room:example.com" });
+  });
+
+  it("maps runtime events to ergonomic client events", async () => {
+    installRuntime({ init: { deviceId: "DEVICE", userId: "@bot:example.com" } });
+    const client = createMatrixClient({
+      homeserver: "https://matrix.example.com",
+      token: "token",
+      wasmModule: {} as WebAssembly.Module,
+    });
+    const listener = vi.fn();
+    client.events.on(listener);
+    await client.connect();
+
+    globalThis.__matrixCoreEmit?.(
+      "core-1",
+      JSON.stringify({
+        event: {
+          body: "Hello",
+          content: { body: "Hello", msgtype: "m.text" },
+          eventId: "$message",
+          formattedBody: "<strong>Hello</strong>",
+          isEncrypted: true,
+          isMe: false,
+          msgtype: "m.text",
+          originServerTs: 123,
+          raw: {},
+          roomId: "!room:example.com",
+          sender: "@alice:example.com",
+          threadRootEventId: "$thread",
+          type: "m.room.message",
+        },
+        type: "message",
+      })
+    );
+
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({
+        encrypted: true,
+        eventId: "$message",
+        html: "<strong>Hello</strong>",
+        kind: "message",
+        roomId: "!room:example.com",
+        sender: { isMe: false, userId: "@alice:example.com" },
+        text: "Hello",
+        threadRoot: "$thread",
+      })
+    );
+  });
+});
+
+function installRuntime(responses: Record<string, unknown>): RuntimeCall[] {
+  const calls: RuntimeCall[] = [];
+  globalThis.__matrixCoreCreate = () => "core-1";
+  globalThis.__matrixCoreCall = async (coreId, operation, payload) => {
+    calls.push({ coreId, operation, payload: JSON.parse(payload) as Record<string, unknown> });
+    return JSON.stringify(responses[operation] ?? {});
+  };
+  return calls;
+}

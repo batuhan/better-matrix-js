@@ -85,6 +85,7 @@ export interface MatrixMessages {
   edit(options: EditMessageOptions): Promise<SentEvent>;
   get(options: FetchMessageOptions): Promise<FetchMessageResult>;
   list(options: FetchMessagesOptions): Promise<FetchMessagesResult>;
+  markRead(options: MarkReadOptions): Promise<void>;
   redact(options: RedactMessageOptions): Promise<void>;
   send(options: SendMessageOptions): Promise<SentEvent>;
   sendMedia(options: SendMediaMessageOptions): Promise<SentEvent>;
@@ -195,6 +196,7 @@ class DefaultMatrixClient implements MatrixClient {
           nextCursor: result.nextCursor,
         });
       },
+      markRead: (opts) => this.#coreRequired().markRead(opts),
       redact: (opts) =>
         this.#coreRequired().deleteMessage(stripUndefined({
           messageId: opts.eventId,
