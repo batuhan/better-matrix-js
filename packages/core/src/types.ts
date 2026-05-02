@@ -433,10 +433,10 @@ export interface MatrixCoreHost {
   fetch?: typeof fetch;
   log?: (level: "debug" | "info" | "warn" | "error", message: string, data?: unknown) => void;
   randomBytes?: (length: number) => Uint8Array;
-  store?: MatrixKeyValueStore;
+  state?: MatrixStateStore;
 }
 
-export interface MatrixKeyValueStore {
+export interface MatrixStateStore {
   delete(key: string): Promise<void>;
   get(key: string): Promise<Uint8Array | null>;
   list(prefix: string): Promise<string[]>;

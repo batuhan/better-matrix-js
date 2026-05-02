@@ -3,9 +3,9 @@
 In-memory state adapter for `better-matrix-js`.
 
 ```ts
-import { createMemoryMatrixStore } from "@better-matrix-js/state-memory";
+import { createMemoryMatrixState } from "@better-matrix-js/state-memory";
 
-const store = createMemoryMatrixStore();
+const state = createMemoryMatrixState();
 ```
 
 Use this for tests and local experiments. It does not persist Matrix sync or E2EE crypto state across restarts.

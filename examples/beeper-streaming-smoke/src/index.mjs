@@ -4,9 +4,8 @@ import { fileURLToPath } from "node:url";
 import { Chat } from "chat";
 import { loadMatrixCoreFromNodePackage } from "better-matrix-js/node";
 import { createMatrixAdapter, loginMatrix } from "@better-matrix-js/chat-adapter";
-import { FileState, MatrixStateStore } from "./file-state.mjs";
+import { FileState, MatrixState } from "./file-state.mjs";
 
-const DEFAULT_INVITE = "@batuhan:beeper.com";
 const loremSentenceCorpus = [
   "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
   "Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
@@ -72,21 +71,24 @@ function env(name, fallback) {
 
 async function main() {
   const startedAt = performance.now();
-  await loadEnvFile(process.env.MATRIX_ENV_FILE || "/Users/batuhan/Projects/labs/matrix-asks/.env");
+  await loadEnvFile(process.env.MATRIX_ENV_FILE || join(dirname(fileURLToPath(import.meta.url)), "..", ".env"));
   logTiming("env_loaded", startedAt);
   const homeserverUrl = env("MATRIX_HOMESERVER_URL", process.env.MATRIX_HOMESERVER);
   if (!homeserverUrl) throw new Error("Missing MATRIX_HOMESERVER_URL or MATRIX_HOMESERVER");
-  const storeDir = env(
-    "MATRIX_STORE_DIR",
-    join(dirname(fileURLToPath(import.meta.url)), "..", ".matrix-store")
+  const stateDir = env(
+    "MATRIX_STATE_DIR",
+    join(dirname(fileURLToPath(import.meta.url)), "..", ".matrix-state")
   );
 
-  const state = new FileState(join(storeDir, "state.json"));
+  const state = new FileState(join(stateDir, "state.json"));
   await state.connect();
-  logTiming("store_ready", startedAt);
+  logTiming("state_ready", startedAt);
   const login = await resolveLogin(homeserverUrl, state);
   logTiming("login_resolved", startedAt);
-  const inviteUserId = env("MATRIX_INVITE_USER_ID", DEFAULT_INVITE);
+  const inviteUserId = process.env.MATRIX_INVITE_USER_ID;
+  if (!inviteUserId && !process.env.MATRIX_ROOM_ID) {
+    throw new Error("Missing MATRIX_INVITE_USER_ID or MATRIX_ROOM_ID");
+  }
   const roomId = await resolveSmokeRoom(homeserverUrl, login.accessToken, inviteUserId, state);
   console.log(`room_id=${roomId}`);
   console.log(`invited=${inviteUserId}`);
@@ -95,7 +97,7 @@ async function main() {
     accessToken: login.accessToken,
     createCore: () =>
       loadMatrixCoreFromNodePackage({
-        host: { store: new MatrixStateStore(state, "matrix-core") },
+        host: { state: new MatrixState(state, "matrix-core") },
       }),
     deviceId: process.env.MATRIX_DEVICE_ID || login.deviceId,
     homeserverUrl,

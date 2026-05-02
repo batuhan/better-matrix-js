@@ -7,3 +7,5 @@ packages/core/dist
 packages/chat-adapter/dist
 packages/core/native/dist
 examples/beeper-streaming-smoke/.matrix-store/
+examples/beeper-streaming-smoke/.matrix-state/
+examples/beeper-streaming-smoke/.env

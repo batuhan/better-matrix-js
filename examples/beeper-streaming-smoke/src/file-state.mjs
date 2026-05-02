@@ -9,7 +9,7 @@ export class FileState {
     lists: {},
     locks: {},
     queues: {},
-    store: {},
+    state: {},
     subscriptions: [],
   };
 
@@ -49,7 +49,7 @@ export class FileState {
     this.#data.lists ??= {};
     this.#data.locks ??= {};
     this.#data.queues ??= {};
-    this.#data.store ??= {};
+    this.#data.state ??= {};
     this.#data.subscriptions ??= [];
     this.#connected = true;
     this.#cleanExpiredLocks();
@@ -58,7 +58,7 @@ export class FileState {
 
   async delete(key) {
     this.#ensureConnected();
-    delete this.#data.store[key];
+    delete this.#data.state[key];
     delete this.#data.lists[key];
     await this.#save();
   }
@@ -104,10 +104,10 @@ export class FileState {
 
   async get(key) {
     this.#ensureConnected();
-    const cached = this.#data.store[key];
+    const cached = this.#data.state[key];
     if (!cached) return null;
     if (cached.expiresAt !== null && cached.expiresAt <= Date.now()) {
-      delete this.#data.store[key];
+      delete this.#data.state[key];
       await this.#save();
       return null;
     }
@@ -140,7 +140,7 @@ export class FileState {
 
   async set(key, value, ttlMs) {
     this.#ensureConnected();
-    this.#data.store[key] = {
+    this.#data.state[key] = {
       expiresAt: ttlMs ? Date.now() + ttlMs : null,
       value,
     };
@@ -190,7 +190,7 @@ export class FileState {
   }
 }
 
-export class MatrixStateStore {
+export class MatrixState {
   #indexKey;
   #state;
   #valuePrefix;

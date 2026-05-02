@@ -1,8 +1,8 @@
-import { copyBytes, type MatrixKeyValueStore } from "better-matrix-js";
+import { copyBytes, type MatrixStateStore } from "better-matrix-js";
 
 export type MaybePromise<T> = T | Promise<T>;
 
-export interface SimpleMatrixStoreAdapter {
+export interface SimpleMatrixStateAdapter {
   delete(key: string): MaybePromise<void>;
   get(key: string): MaybePromise<ArrayBuffer | Uint8Array | number[] | null | undefined>;
   keys?(): MaybePromise<Iterable<string> | ArrayLike<string>>;
@@ -10,15 +10,15 @@ export interface SimpleMatrixStoreAdapter {
   set(key: string, value: Uint8Array): MaybePromise<void>;
 }
 
-export interface SimpleMatrixStoreOptions {
+export interface SimpleMatrixStateOptions {
   indexKey?: string;
 }
 
-export class SimpleMatrixStore implements MatrixKeyValueStore {
-  readonly #adapter: SimpleMatrixStoreAdapter;
+export class SimpleMatrixState implements MatrixStateStore {
+  readonly #adapter: SimpleMatrixStateAdapter;
   readonly #indexKey: string;
 
-  constructor(adapter: SimpleMatrixStoreAdapter, options: SimpleMatrixStoreOptions = {}) {
+  constructor(adapter: SimpleMatrixStateAdapter, options: SimpleMatrixStateOptions = {}) {
     this.#adapter = adapter;
     this.#indexKey = options.indexKey ?? "__better_matrix_js_keys__";
   }
@@ -69,15 +69,12 @@ export class SimpleMatrixStore implements MatrixKeyValueStore {
   }
 }
 
-export function createMatrixStore(
-  adapter: SimpleMatrixStoreAdapter,
-  options: SimpleMatrixStoreOptions = {}
-): MatrixKeyValueStore {
-  return new SimpleMatrixStore(adapter, options);
+export function createMatrixState(
+  adapter: SimpleMatrixStateAdapter,
+  options: SimpleMatrixStateOptions = {}
+): MatrixStateStore {
+  return new SimpleMatrixState(adapter, options);
 }
-
-export const createMatrixStoreAdapter = createMatrixStore;
-export const createMatrixStoreAdaptor = createMatrixStore;
 
 function toArray(value: Iterable<string> | ArrayLike<string>): string[] {
   return Array.from(value as Iterable<string> | ArrayLike<string>);

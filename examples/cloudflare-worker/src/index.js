@@ -2,7 +2,7 @@ import "better-matrix-js/wasm_exec.js";
 import wasmModule from "better-matrix-js/matrix-core.wasm";
 import { loadMatrixCore } from "better-matrix-js";
 import {
-  createDurableObjectMatrixStore,
+  createDurableObjectMatrixState,
   MatrixSyncDurableObject,
 } from "@better-matrix-js/cloudflare";
 
@@ -41,7 +41,7 @@ export class MatrixCoreObject {
     this.corePromise ??= loadMatrixCore({
       wasmModule,
       host: {
-        store: createDurableObjectMatrixStore(this.state.storage, {
+        state: createDurableObjectMatrixState(this.state.storage, {
           prefix: "matrix/default/",
         }),
       },

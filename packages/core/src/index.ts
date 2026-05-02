@@ -28,7 +28,7 @@ export type {
   MatrixJoinRoomOptions,
   MatrixJoinRoomResult,
   MatrixJoinedRoomsResult,
-  MatrixKeyValueStore,
+  MatrixStateStore,
   MatrixLeaveRoomOptions,
   MatrixListRoomThreadsOptions,
   MatrixListRoomThreadsResult,

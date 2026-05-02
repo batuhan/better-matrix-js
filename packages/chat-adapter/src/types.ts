@@ -4,7 +4,7 @@ import type {
   MatrixCore,
   MatrixCoreHost,
   MatrixCoreInitOptions,
-  MatrixKeyValueStore,
+  MatrixStateStore,
 } from "better-matrix-js";
 
 export interface MatrixChatThreadRef {
@@ -30,7 +30,7 @@ export interface MatrixAdapterConfig extends Omit<MatrixCoreInitOptions, "homese
   };
   roomAllowlist?: string[];
   statePrefix?: string;
-  store?: MatrixKeyValueStore;
+  state?: MatrixStateStore;
   typingTimeoutMs?: number;
   wasmBytes?: BufferSource;
   wasmModule?: WebAssembly.Module;

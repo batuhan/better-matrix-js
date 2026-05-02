@@ -24,10 +24,6 @@
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js"
     },
-    "./cloudflare": {
-      "types": "./dist/cloudflare.d.ts",
-      "import": "./dist/cloudflare.js"
-    },
     "./matrix-core.wasm": "./dist/matrix-core.wasm",
     "./wasm_exec.js": "./dist/wasm_exec.js"
   },
@@ -45,9 +41,6 @@
     "clean": "rm -rf dist",
     "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@better-matrix-js/cloudflare": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",

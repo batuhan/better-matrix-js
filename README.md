@@ -48,11 +48,11 @@ await bot.initialize();
 ### Raw Matrix core (no Chat SDK)
 
 ```ts
-import { createFileMatrixStore } from "@better-matrix-js/state-file";
+import { createFileMatrixState } from "@better-matrix-js/state-file";
 import { loadMatrixCoreFromNodePackage } from "better-matrix-js/node";
 
 const core = await loadMatrixCoreFromNodePackage({
-  host: { store: createFileMatrixStore(".matrix-store") },
+  host: { state: createFileMatrixState(".matrix-store") },
 });
 
 await core.init({

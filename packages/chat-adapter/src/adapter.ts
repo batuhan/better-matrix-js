@@ -8,7 +8,7 @@ import {
   type MatrixCoreInitOptions,
   type MatrixEncryptedFile,
   type MatrixFetchMessagesOptions,
-  type MatrixKeyValueStore,
+  type MatrixStateStore,
   type MatrixMediaAttachment,
   type MatrixMessageEvent,
   type MatrixPollingHandle,
@@ -788,15 +788,15 @@ export class MatrixAdapter {
 
   #resolveHost(): MatrixCoreHost {
     const host = { ...this.#config.host };
-    host.store ??= this.#config.store ?? this.#chatStateStore();
+    host.state ??= this.#config.state ?? this.#chatStateStore();
     return host;
   }
 
-  #chatStateStore(): MatrixKeyValueStore {
+  #chatStateStore(): MatrixStateStore {
     if (!this.#chat) {
       throw new Error("Matrix adapter has not been initialized");
     }
-    return new ChatStateMatrixStore(this.#chat.getState(), {
+    return new ChatMatrixState(this.#chat.getState(), {
       prefix:
         this.#config.statePrefix ??
         `matrix:${safeStateKeyPart(this.#homeserverUrl)}:${safeStateKeyPart(
@@ -1086,16 +1086,16 @@ export class MatrixAdapter {
   }
 }
 
-interface ChatStateMatrixStoreOptions {
+interface ChatMatrixStateOptions {
   prefix: string;
 }
 
-class ChatStateMatrixStore implements MatrixKeyValueStore {
+class ChatMatrixState implements MatrixStateStore {
   readonly #indexKey: string;
   readonly #prefix: string;
   readonly #state: StateAdapter;
 
-  constructor(state: StateAdapter, options: ChatStateMatrixStoreOptions) {
+  constructor(state: StateAdapter, options: ChatMatrixStateOptions) {
     this.#state = state;
     this.#prefix = options.prefix;
     this.#indexKey = `${this.#prefix}__keys`;

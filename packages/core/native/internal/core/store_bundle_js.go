@@ -17,7 +17,7 @@ type jsByteStore struct {
 }
 
 func loadStoreBundle(ctx context.Context, host RuntimeHost, homeserverURL string, userID id.UserID, deviceID id.DeviceID, pickleKey []byte) (*storeBundle, error) {
-	rawStore := host.get("store")
+	rawStore := host.get("state")
 	if rawStore.IsUndefined() || rawStore.IsNull() {
 		return newMemoryStoreBundle(), nil
 	}

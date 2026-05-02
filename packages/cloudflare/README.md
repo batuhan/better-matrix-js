@@ -6,24 +6,23 @@ Cloudflare Workers helpers for [`better-matrix-js`](https://github.com/batuhan/b
 npm install better-matrix-js @better-matrix-js/cloudflare
 ```
 
-## Storage
+## State
 
-Pick whichever fits your binding. Both implement the `MatrixKeyValueStore` interface that `better-matrix-js` expects on `host.store`.
+Pick whichever fits your binding. Both implement the `MatrixStateStore` interface that `better-matrix-js` expects on `host.state`.
 
 ```ts
 import {
-  createCloudflareKVMatrixStore,
-  createDurableObjectMatrixStore,
+  createCloudflareKVMatrixState,
+  createDurableObjectMatrixState,
 } from "@better-matrix-js/cloudflare";
 
 // Cloudflare KV
-const store = createCloudflareKVMatrixStore(env.MATRIX_KV, { prefix: "matrix/" });
+const matrixState = createCloudflareKVMatrixState(env.MATRIX_KV, { prefix: "matrix/" });
 
 // Durable Object storage (recommended for E2EE — strong consistency)
-const store = createDurableObjectMatrixStore(state.storage, { prefix: "matrix/" });
+const matrixState = createDurableObjectMatrixState(state.storage, { prefix: "matrix/" });
 ```
 
-`createCloudflareKVMatrixStoreAdapter` / `Adaptor` and `createDurableObjectMatrixStoreAdapter` / `Adaptor` are exported as naming aliases for projects that standardize on adapter/adaptor factories.
 
 ## Sync Durable Object
 

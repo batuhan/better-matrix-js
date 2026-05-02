@@ -1,14 +1,10 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+const script = process.env.MATRIX_CREATE_ACCOUNT_SCRIPT;
 
-const here = dirname(fileURLToPath(import.meta.url));
-const defaultScript = resolve(
-  here,
-  "../../../../matrix-chat-sdk-private-e2e/src/create-beeper-account.js"
-);
-const script = process.env.MATRIX_CREATE_ACCOUNT_SCRIPT || defaultScript;
+if (!script) {
+  throw new Error("Missing MATRIX_CREATE_ACCOUNT_SCRIPT");
+}
 
 if (!existsSync(script)) {
   throw new Error(`Account creator not found: ${script}`);

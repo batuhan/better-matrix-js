@@ -1,11 +1,11 @@
 # @better-matrix-js/state-simple
 
-Wrap any simple getter/setter backend as a `better-matrix-js` store.
+Wrap any simple getter/setter backend as `better-matrix-js` Matrix state.
 
 ```ts
-import { createMatrixStore } from "@better-matrix-js/state-simple";
+import { createMatrixState } from "@better-matrix-js/state-simple";
 
-const store = createMatrixStore({
+const state = createMatrixState({
   get: (key) => backend.get(key),
   set: (key, value) => backend.set(key, value),
   delete: (key) => backend.delete(key),

@@ -1,3 +1,5 @@
+import type { MatrixStateStore } from "better-matrix-js";
+
 export interface CloudflareKVNamespaceLike {
   delete(key: string): Promise<void>;
   get(key: string, type: "arrayBuffer"): Promise<ArrayBuffer | null>;
@@ -27,15 +29,8 @@ export interface DurableObjectStateLike {
   storage: DurableObjectStorageLike;
 }
 
-export interface CloudflareStoreOptions {
+export interface CloudflareStateOptions {
   prefix?: string;
-}
-
-export interface MatrixKeyValueStore {
-  delete(key: string): Promise<void>;
-  get(key: string): Promise<Uint8Array | null>;
-  list(prefix: string): Promise<string[]>;
-  set(key: string, value: Uint8Array): Promise<void>;
 }
 
 export interface MatrixSyncDurableObjectEnv {
@@ -76,10 +71,10 @@ export interface MatrixSyncDurableObjectStatus {
   since?: string;
 }
 
-export function createCloudflareKVMatrixStore(
+export function createCloudflareKVMatrixState(
   namespace: CloudflareKVNamespaceLike,
-  options: CloudflareStoreOptions = {}
-): MatrixKeyValueStore {
+  options: CloudflareStateOptions = {}
+): MatrixStateStore {
   const prefix = options.prefix ?? "";
   return {
     async delete(key) {
@@ -111,13 +106,10 @@ export function createCloudflareKVMatrixStore(
   };
 }
 
-export const createCloudflareKVMatrixStoreAdapter = createCloudflareKVMatrixStore;
-export const createCloudflareKVMatrixStoreAdaptor = createCloudflareKVMatrixStore;
-
-export function createDurableObjectMatrixStore(
+export function createDurableObjectMatrixState(
   storage: DurableObjectStorageLike,
-  options: CloudflareStoreOptions = {}
-): MatrixKeyValueStore {
+  options: CloudflareStateOptions = {}
+): MatrixStateStore {
   const prefix = options.prefix ?? "";
   return {
     async delete(key) {
@@ -142,9 +134,6 @@ export function createDurableObjectMatrixStore(
     },
   };
 }
-
-export const createDurableObjectMatrixStoreAdapter = createDurableObjectMatrixStore;
-export const createDurableObjectMatrixStoreAdaptor = createDurableObjectMatrixStore;
 
 export class MatrixSyncDurableObject {
   readonly #env: MatrixSyncDurableObjectEnv;

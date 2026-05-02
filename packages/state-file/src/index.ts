@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { copyBytes, type MatrixKeyValueStore } from "better-matrix-js";
+import { copyBytes, type MatrixStateStore } from "better-matrix-js";
 
-export class FileMatrixStore implements MatrixKeyValueStore {
+export class FileMatrixState implements MatrixStateStore {
   readonly #dir: string;
   #index: Map<string, string> | null = null;
 
@@ -40,7 +40,7 @@ export class FileMatrixStore implements MatrixKeyValueStore {
 
   async list(prefix: string): Promise<string[]> {
     const index = await this.#loadIndex();
-    return [...index.keys()].filter((key) => key.startsWith(prefix));
+    return [...index.keys()].filter((key) => key.startsWith(prefix)).sort();
   }
 
   async set(key: string, value: Uint8Array): Promise<void> {
@@ -77,8 +77,8 @@ export class FileMatrixStore implements MatrixKeyValueStore {
   }
 }
 
-export function createFileMatrixStore(dir: string): FileMatrixStore {
-  return new FileMatrixStore(dir);
+export function createFileMatrixState(dir: string): FileMatrixState {
+  return new FileMatrixState(dir);
 }
 
 function keyToFilename(key: string): string {
