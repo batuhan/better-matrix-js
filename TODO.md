@@ -49,7 +49,7 @@
 - [x] Use `m.direct` account data for DM detection before member-count fallback.
 - [x] Make Beeper sync options conditional instead of setting `BeeperStreaming: true` for every homeserver.
 - [ ] Add Beeper capability detection beyond hostname fallback.
-- [ ] Keep encrypted media behavior in Go; remove duplicate TS parsing paths.
+- [x] Keep encrypted media behavior in Go; remove duplicate TS parsing paths.
 - [x] Ensure fetch-message pagination always returns chronological page order.
 - [ ] Ensure sync response replay is idempotent at the emitted event level.
 
@@ -66,13 +66,13 @@
 
 ## Chat SDK Adapter
 
-- [ ] Make the Chat adapter a thin translator over `better-matrix-js`.
+- [x] Make the Chat adapter a thin translator over `better-matrix-js`.
 - [x] Delete old Chat adapter streaming drivers; keep streaming delegated to core plus the public `MatrixStream` type/helper exports.
-- [ ] Remove Chat adapter Matrix attachment parser after core emits normalized attachments.
-- [ ] Remove Chat adapter Matrix mention parser after core emits normalized mentions.
+- [x] Remove Chat adapter Matrix attachment parser after core emits normalized attachments.
+- [x] Remove Chat adapter Matrix mention parser after core emits normalized mentions.
 - [x] Remove Chat adapter Matrix relation parser after core emits normalized relations.
-- [ ] Remove Chat adapter in-memory reaction/thread authority.
-- [ ] Keep only Chat message construction, formatting conversion, slash dispatch, and Chat SDK method mapping.
+- [x] Remove Chat adapter in-memory reaction/thread authority.
+- [x] Keep only Chat message construction, formatting conversion, slash dispatch, and Chat SDK method mapping.
 - [x] Wire Chat SDK streaming to `client.streams.send(...)`.
 - [x] Wire Chat SDK ephemeral messages to `client.beeper.ephemeral.send(...)`.
 

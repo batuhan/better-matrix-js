@@ -348,6 +348,7 @@ function testMessageEvent(event: Extract<MatrixCoreEvent, { type: "message" }>["
     html: event.formattedBody,
     kind: "message",
     messageType: event.msgtype,
+    mentions: event.mentions,
     raw: event.raw,
     relation: event.relation,
     replaces: event.replaces,
@@ -408,7 +409,6 @@ describe("MatrixAdapter", () => {
     const message = adapter.parseMessage(testMessageEvent({
       body: "Hello Alice",
       content: {
-        "m.mentions": { user_ids: ["@bot:example.com"] },
         body: "Hello Alice",
         format: "org.matrix.custom.html",
         formatted_body: "<p>Hello <strong>Alice</strong></p>",
@@ -416,6 +416,7 @@ describe("MatrixAdapter", () => {
       },
       eventId: "$event",
       formattedBody: "<p>Hello <strong>Alice</strong></p>",
+      mentions: { userIds: ["@bot:example.com"] },
       msgtype: "m.text",
       raw: {},
       relation: { eventId: "$original", type: "m.replace" },

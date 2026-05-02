@@ -74,7 +74,7 @@ interface SlashCommandParts {
 
 interface MatrixAttachmentFetchMetadata {
   matrixContentUri?: string;
-  matrixEncryptedFile?: string;
+  matrixEncryptedFile?: MatrixEncryptedFile;
   matrixEventId: string;
   matrixRoomId: string;
 }
@@ -115,7 +115,6 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixMessage
   #formatConverter = new MatrixFormatConverter();
   #logger: Logger;
   #inviteJoinTasks = new Map<string, Promise<void>>();
-  #messageThreadIds = new Map<string, string>();
   #roomCache = new Map<string, RoomCacheEntry>();
   #roomAllowlist: Set<string> | null;
   #unsubscribeClient: (() => void) | null = null;
@@ -160,7 +159,6 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixMessage
     await this.#client?.close();
     this.#client = null;
     this.#chat = null;
-    this.#messageThreadIds.clear();
     this.#userId = null;
     delete this.botUserId;
   }
@@ -201,9 +199,8 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixMessage
   }
 
   parseMessage(raw: MatrixMessageEvent, overrideThreadId?: string): Message<MatrixMessageEvent> {
-    const body = normalizeOptionalString(raw.text) ?? readString(raw.content, "body") ?? "";
-    const formattedBody =
-      normalizeOptionalString(raw.html) ?? readString(raw.content, "formatted_body");
+    const body = normalizeOptionalString(raw.text) ?? "";
+    const formattedBody = normalizeOptionalString(raw.html);
     const threadRoot =
       raw.threadRoot ??
       (raw.relation?.type === "m.thread" ? raw.relation.eventId : undefined);
@@ -230,10 +227,10 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixMessage
       },
       formatted,
       id: raw.eventId,
-      isMention: this.#isMention(raw, text),
+      isMention: this.#isMention(raw),
       metadata: {
         dateSent: raw.timestamp ? new Date(raw.timestamp) : new Date(),
-        edited: raw.edited ?? Boolean(readRecord(raw.content, "m.new_content")),
+        edited: raw.edited,
       },
       raw,
       text,
@@ -692,7 +689,6 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixMessage
         return;
       }
       const message = this.#messageEventToMessage(event);
-      this.#messageThreadIds.set(message.id, message.threadId);
       this.#chat.processMessage(this.#asChatAdapter(), message.threadId, message, this.#webhookOptions);
       const slash = this.#parseSlashCommand(message.text);
       if (slash) {
@@ -720,9 +716,7 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixMessage
         messageId: event.relatesTo,
         raw: event,
         rawEmoji: event.key,
-        threadId:
-          this.#messageThreadIds.get(event.relatesTo) ??
-          this.encodeThreadId({ roomId: event.roomId }),
+        threadId: this.encodeThreadId({ roomId: event.roomId }),
         user: {
           fullName: event.sender.userId,
           isBot: "unknown",
@@ -937,11 +931,7 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixMessage
   }
 
   #attachmentsFromRaw(raw: MatrixMessageEvent): Attachment[] {
-    const attachments =
-      raw.attachments && raw.attachments.length > 0
-        ? raw.attachments
-        : this.#matrixAttachmentsFromContent(raw);
-    return attachments.map((attachment) => this.#attachmentFromMatrix(raw, attachment));
+    return raw.attachments.map((attachment) => this.#attachmentFromMatrix(raw, attachment));
   }
 
   #attachmentFromMatrix(raw: MatrixMessageEvent, attachment: MatrixClientAttachment): Attachment {
@@ -953,7 +943,7 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixMessage
       metadata.matrixContentUri = attachment.contentUri;
     }
     if (attachment.encryptedFile) {
-      metadata.matrixEncryptedFile = JSON.stringify(attachment.encryptedFile);
+      metadata.matrixEncryptedFile = attachment.encryptedFile;
     }
     const chatAttachment: MatrixAttachment = {
       fetchMetadata: metadata,
@@ -983,39 +973,10 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixMessage
     return chatAttachment;
   }
 
-  #matrixAttachmentsFromContent(raw: MatrixMessageEvent): MatrixClientAttachment[] {
-    const content = raw.content;
-    const kind = attachmentKindFromMsgtype(raw.messageType ?? readString(content, "msgtype"));
-    if (!kind) {
-      return [];
-    }
-    const infoRecord = readRecord(content, "info");
-    const info = infoRecord ? matrixMediaInfoFromRecord(infoRecord) : undefined;
-    const encryptedFile = readEncryptedFile(content, "file");
-    const attachment: MatrixClientAttachment = { kind, ...info };
-    const contentUri = readString(content, "url");
-    if (contentUri !== undefined) {
-      attachment.contentUri = contentUri;
-    }
-    if (encryptedFile !== undefined) {
-      attachment.encryptedFile = encryptedFile;
-    }
-    const filename =
-      readString(content, "filename") ?? normalizeOptionalString(raw.text) ?? readString(content, "body");
-    if (filename !== undefined) {
-      attachment.filename = filename;
-    }
-    if (info !== undefined) {
-      Object.assign(attachment, info);
-    }
-    return [attachment];
-  }
-
   async #downloadAttachment(metadata: MatrixAttachmentFetchMetadata): Promise<Uint8Array> {
     const client = this.#requireClient();
     if (metadata.matrixEncryptedFile) {
-      const file = parseEncryptedFileMetadata(metadata.matrixEncryptedFile);
-      const downloaded = await client.media.downloadEncrypted({ file });
+      const downloaded = await client.media.downloadEncrypted({ file: metadata.matrixEncryptedFile });
       return downloaded.bytes;
     }
     if (!metadata.matrixContentUri) {
@@ -1025,19 +986,8 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixMessage
     return downloaded.bytes;
   }
 
-  #isMention(raw: MatrixMessageEvent, text: string): boolean {
-    const mentions = readRecord(raw.content, "m.mentions");
-    if (readBoolean(mentions, "room")) {
-      return true;
-    }
-    const userIds = readStringArray(mentions, "user_ids") ?? readStringArray(mentions, "userIds") ?? [];
-    if (this.#userId && userIds.includes(this.#userId)) {
-      return true;
-    }
-    if (this.#userId && text.includes(this.#userId)) {
-      return true;
-    }
-    return false;
+  #isMention(raw: MatrixMessageEvent): boolean {
+    return Boolean(raw.mentions?.room || (this.#userId && raw.mentions?.userIds?.includes(this.#userId)));
   }
 
   #cacheRoom(info: MatrixRoomInfo): void {
@@ -1361,47 +1311,6 @@ function attachmentKindFromContentType(contentType?: string): MatrixClientAttach
   return "file";
 }
 
-function attachmentKindFromMsgtype(msgtype?: string): MatrixClientAttachment["kind"] | null {
-  if (msgtype === "m.image") {
-    return "image";
-  }
-  if (msgtype === "m.video") {
-    return "video";
-  }
-  if (msgtype === "m.audio") {
-    return "audio";
-  }
-  if (msgtype === "m.file") {
-    return "file";
-  }
-  return null;
-}
-
-function matrixMediaInfoFromRecord(record: Record<string, unknown>): Omit<MatrixClientAttachment, "kind"> {
-  const info: Omit<MatrixClientAttachment, "kind"> = {};
-  const contentType = readString(record, "mimetype") ?? readString(record, "contentType");
-  if (contentType !== undefined) {
-    info.contentType = contentType;
-  }
-  const duration = readNumber(record, "duration");
-  if (duration !== undefined) {
-    info.duration = duration;
-  }
-  const height = readNumber(record, "h") ?? readNumber(record, "height");
-  if (height !== undefined) {
-    info.height = height;
-  }
-  const size = readNumber(record, "size");
-  if (size !== undefined) {
-    info.size = size;
-  }
-  const width = readNumber(record, "w") ?? readNumber(record, "width");
-  if (width !== undefined) {
-    info.width = width;
-  }
-  return info;
-}
-
 function normalizeVisibility(
   visibility?: MatrixRoomInfo["visibility"],
   joinRule?: string
@@ -1506,22 +1415,6 @@ function isBlob(value: unknown): value is Blob {
   return typeof Blob !== "undefined" && value instanceof Blob;
 }
 
-function parseEncryptedFileMetadata(serialized: string): MatrixEncryptedFile {
-  const parsed = JSON.parse(serialized) as unknown;
-  if (!isRecord(parsed) || typeof parsed.url !== "string") {
-    throw new Error("Invalid Matrix encrypted media metadata");
-  }
-  return parsed as unknown as MatrixEncryptedFile;
-}
-
-function readEncryptedFile(
-  record: Record<string, unknown> | undefined,
-  key: string
-): MatrixEncryptedFile | undefined {
-  const value = readRecord(record, key);
-  return value ? (value as unknown as MatrixEncryptedFile) : undefined;
-}
-
 function readRecord(
   record: Record<string, unknown> | undefined,
   key: string
@@ -1533,23 +1426,6 @@ function readRecord(
 function readString(record: Record<string, unknown> | undefined, key: string): string | undefined {
   const value = record?.[key];
   return typeof value === "string" ? value : undefined;
-}
-
-function readNumber(record: Record<string, unknown> | undefined, key: string): number | undefined {
-  const value = record?.[key];
-  return typeof value === "number" ? value : undefined;
-}
-
-function readBoolean(record: Record<string, unknown> | undefined, key: string): boolean | undefined {
-  const value = record?.[key];
-  return typeof value === "boolean" ? value : undefined;
-}
-
-function readStringArray(record: Record<string, unknown> | undefined, key: string): string[] | undefined {
-  const value = record?.[key];
-  return Array.isArray(value) && value.every((item) => typeof item === "string")
-    ? value
-    : undefined;
 }
 
 function normalizeOptionalString(value?: string): string | undefined {
