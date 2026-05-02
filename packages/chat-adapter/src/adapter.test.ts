@@ -223,6 +223,58 @@ describe("MatrixAdapter", () => {
     expect(message.threadId).toBe(encodeMatrixChatThreadRef({ roomId: "!room:example.com" }));
   });
 
+  it("only derives thread ids from Matrix thread relations", async () => {
+    const { core } = makeCore();
+    const adapter = new MatrixAdapter({
+      accessToken: "token",
+      core,
+      homeserverUrl: "https://matrix.example.com",
+      polling: { enabled: false },
+    });
+    await adapter.initialize(makeChat());
+
+    const edit = adapter.parseMessage({
+      body: "Edited",
+      content: {
+        "m.relates_to": {
+          event_id: "$original",
+          rel_type: "m.replace",
+        },
+        body: "Edited",
+        msgtype: "m.text",
+      },
+      eventId: "$edit",
+      msgtype: "m.text",
+      raw: {},
+      roomId: "!room:example.com",
+      sender: "@alice:example.com",
+      type: "m.room.message",
+    });
+
+    const threadReply = adapter.parseMessage({
+      body: "Reply",
+      content: {
+        "m.relates_to": {
+          event_id: "$root",
+          rel_type: "m.thread",
+        },
+        body: "Reply",
+        msgtype: "m.text",
+      },
+      eventId: "$reply",
+      msgtype: "m.text",
+      raw: {},
+      roomId: "!room:example.com",
+      sender: "@alice:example.com",
+      type: "m.room.message",
+    });
+
+    expect(edit.threadId).toBe(encodeMatrixChatThreadRef({ roomId: "!room:example.com" }));
+    expect(threadReply.threadId).toBe(
+      encodeMatrixChatThreadRef({ eventId: "$root", roomId: "!room:example.com" })
+    );
+  });
+
   it("posts formatted text with Matrix mentions and media attachments", async () => {
     const { core } = makeCore();
     const adapter = new MatrixAdapter({

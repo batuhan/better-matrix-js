@@ -243,10 +243,12 @@ export class MatrixAdapter {
     const formattedBody =
       normalizeOptionalString(raw.formattedBody) ?? readString(raw.content, "formatted_body");
     const relatesTo = readRecord(raw.content, "m.relates_to");
+    const relationType = readString(relatesTo, "rel_type");
     const threadRoot =
       raw.threadRootEventId ??
-      readString(relatesTo, "event_id") ??
-      readString(relatesTo, "relates_to_event_id");
+      (relationType === "m.thread"
+        ? readString(relatesTo, "event_id") ?? readString(relatesTo, "relates_to_event_id")
+        : undefined);
 
     const chatThreadRef: MatrixChatThreadRef = { roomId: raw.roomId };
     if (threadRoot) {

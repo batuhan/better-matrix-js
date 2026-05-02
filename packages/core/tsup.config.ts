@@ -6,5 +6,4 @@ export default defineConfig({
   dts: true,
   clean: true,
   sourcemap: false,
-  external: ["@better-matrix-js/cloudflare"],
 });
