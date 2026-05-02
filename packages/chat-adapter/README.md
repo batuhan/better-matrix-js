@@ -104,7 +104,7 @@ createMatrixAdapter({
   token,                                        // required
   homeserver,                                   // optional, defaults to Beeper
   client | createClient | wasmModule | wasmBytes | wasmUrl, // optional
-  recoveryKey | recoveryCode | pickleKey,       // optional, for E2EE
+  recoveryKey | pickleKey,                      // optional, for E2EE
   inviteAutoJoin: { inviterAllowlist },         // optional
   roomAllowlist,                                // optional
   sync: { enabled, retryDelayMs, timeoutMs },

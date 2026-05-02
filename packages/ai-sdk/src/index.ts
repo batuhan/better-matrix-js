@@ -1,4 +1,4 @@
-import type { MatrixStream } from "@better-matrix-js/chat-adapter";
+import type { MatrixStream } from "better-matrix-js";
 
 export type AIUIMessageChunk = {
   type: string;

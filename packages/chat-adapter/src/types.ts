@@ -20,7 +20,6 @@ interface MatrixAdapterBaseConfig {
     retryDelayMs?: number;
     timeoutMs?: number;
   };
-  recoveryCode?: string;
   recoveryKey?: string;
   verifyRecoveryOnStart?: boolean;
   inviteAutoJoin?: {

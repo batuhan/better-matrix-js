@@ -16,6 +16,7 @@ import type {
   ChannelVisibility,
   ChatInstance,
   EmojiValue,
+  EphemeralMessage,
   FetchOptions,
   FetchResult,
   FileUpload,
@@ -29,7 +30,7 @@ import type {
   WebhookOptions,
 } from "chat";
 import type { MatrixStream } from "./streaming";
-import { createMatrixStreamDriver, isBeeperHomeserver } from "./streaming";
+import { isBeeperHomeserver } from "./streaming";
 import {
   ConsoleLogger,
   Message,
@@ -39,7 +40,7 @@ import {
   type Logger,
 } from "chat";
 import type { Buffer } from "node:buffer";
-import { MatrixFormatConverter, matrixLocalpart } from "./format";
+import { MatrixFormatConverter, matrixLocalpart, type RenderedMatrixMessage } from "./format";
 import {
   decodeMatrixChatThreadRef,
   encodeMatrixChatThreadRef,
@@ -101,8 +102,9 @@ const INVITE_JOIN_RETRY_BASE_MS = 1000;
 const DEFAULT_HOMESERVER_URL = "https://matrix.beeper.com";
 type MatrixRoomInfo = RoomInfo;
 
-export class MatrixAdapter {
+export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixRawMessage> {
   readonly name = "matrix";
+  readonly userName = "matrix";
 
   botUserId?: string;
 
@@ -189,6 +191,12 @@ export class MatrixAdapter {
     } finally {
       this.#webhookOptions = undefined;
     }
+  }
+
+  async handleWebhook(request: Request, options?: WebhookOptions): Promise<Response> {
+    const payload = await request.json() as MatrixSyncResponsePayload;
+    await this.handleSyncResponse(payload, options);
+    return Response.json({ ok: true });
   }
 
   parseMessage(raw: MatrixRawMessage, overrideThreadId?: string): Message<MatrixRawMessage> {
@@ -290,6 +298,43 @@ export class MatrixAdapter {
     return first;
   }
 
+  async postEphemeral(
+    threadId: string,
+    userId: string,
+    message: AdapterPostableMessage
+  ): Promise<EphemeralMessage<MatrixRawMessage>> {
+    if (!this.#isBeeperHomeserver) {
+      throw new Error("Matrix ephemeral messages require a Beeper homeserver");
+    }
+    const client = this.#requireClient();
+    const parsed = this.decodeThreadId(threadId);
+    const rendered = this.#formatConverter.renderPostableMessage(message);
+    const content = matrixMessageContent(rendered);
+    content["com.beeper.visible_to"] = [userId];
+    const raw = await client.beeper.ephemeral.send({
+      content,
+      eventType: "m.room.message",
+      roomId: parsed.roomId,
+    });
+    const rawMessage: MatrixRawMessage = {
+      body: rendered.body,
+      content,
+      eventId: raw.eventId,
+      raw: raw.raw,
+      roomId: parsed.roomId,
+      type: "m.room.message",
+    };
+    if (this.#userId !== null) {
+      rawMessage.sender = this.#userId;
+    }
+    return {
+      id: raw.eventId,
+      raw: rawMessage,
+      threadId,
+      usedFallback: false,
+    };
+  }
+
   async editMessage(
     threadId: string,
     messageId: string,
@@ -328,19 +373,20 @@ export class MatrixAdapter {
     options?: StreamOptions
   ): Promise<RawMessage<MatrixRawMessage>> {
     const parsed = this.decodeThreadId(threadId);
-    const driver = await createMatrixStreamDriver({
-      client: this.#requireClient(),
-      editMessage: (targetThreadId, messageId, markdown, content) =>
-        content
-          ? this.#editMessageWithContent(targetThreadId, messageId, markdown, content)
-          : this.editMessage(targetThreadId, messageId, { markdown }),
-      homeserverUrl: this.#homeserverUrl,
-      logger: this.#logger.child("stream"),
-      postMessage: (targetThreadId, markdown, content) =>
-        this.#postMessageWithContent(targetThreadId, markdown, content),
+    const client = this.#requireClient();
+    const streamOptions: Parameters<MatrixClient["streams"]["send"]>[0] = {
+      mode: this.#isBeeperHomeserver ? "beeper" : "edits",
       roomId: parsed.roomId,
-    });
-    return driver.stream(threadId, textStream, options);
+      stream: coerceCoreMatrixStream(textStream),
+    };
+    if (parsed.eventId !== undefined) {
+      streamOptions.threadRoot = parsed.eventId;
+    }
+    if (options?.updateIntervalMs !== undefined) {
+      streamOptions.updateIntervalMs = options.updateIntervalMs;
+    }
+    const raw = await client.streams.send(streamOptions);
+    return this.#rawMessage(raw.eventId, parsed.roomId, threadId, raw.raw);
   }
 
   async postObject(
@@ -693,7 +739,7 @@ export class MatrixAdapter {
   }
 
   #asChatAdapter(): Adapter<MatrixChatThreadRef, MatrixRawMessage> {
-    return this as unknown as Adapter<MatrixChatThreadRef, MatrixRawMessage>;
+    return this;
   }
 
   #rawMessage(
@@ -739,7 +785,6 @@ export class MatrixAdapter {
     if (this.#config.deviceId !== undefined) Object.assign(options, { deviceId: this.#config.deviceId });
     if (this.#config.initialSync !== undefined) Object.assign(options, { initialSync: this.#config.initialSync });
     if (this.#config.pickleKey !== undefined) Object.assign(options, { pickleKey: this.#config.pickleKey });
-    if (this.#config.recoveryCode !== undefined) Object.assign(options, { recoveryCode: this.#config.recoveryCode });
     if (this.#config.recoveryKey !== undefined) Object.assign(options, { recoveryKey: this.#config.recoveryKey });
     if (this.#config.since !== undefined) Object.assign(options, { since: this.#config.since });
     if (this.#config.userId !== undefined) Object.assign(options, { userId: this.#config.userId });
@@ -1118,6 +1163,30 @@ function isTransientMatrixError(error: unknown): boolean {
     /timeout|temporar|ECONNRESET|ETIMEDOUT/i.test(message);
 }
 
+function matrixMessageContent(rendered: RenderedMatrixMessage): Record<string, unknown> {
+  const content: Record<string, unknown> = {
+    body: rendered.body,
+    msgtype: "m.text",
+  };
+  if (rendered.formattedBody !== undefined) {
+    content.format = "org.matrix.custom.html";
+    content.formatted_body = rendered.formattedBody;
+  }
+  if (rendered.mentions !== undefined) {
+    content["m.mentions"] = {
+      room: rendered.mentions.room,
+      user_ids: rendered.mentions.userIds,
+    };
+  }
+  return stripUndefined(content);
+}
+
+function stripUndefined<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entryValue]) => entryValue !== undefined)
+  ) as T;
+}
+
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -1341,6 +1410,18 @@ function extractMatrixReplyToEventId(message: AdapterPostableMessage): string | 
   }
   const value = message.matrixReplyToEventId;
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+async function* coerceCoreMatrixStream(
+  stream: MatrixStream
+): AsyncIterable<string | Record<string, unknown>> {
+  for await (const chunk of stream) {
+    if (typeof chunk === "string") {
+      yield chunk;
+    } else {
+      yield { ...chunk };
+    }
+  }
 }
 
 function escapeHTML(value: string): string {
