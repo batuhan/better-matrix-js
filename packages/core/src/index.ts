@@ -1,7 +1,5 @@
-export { copyBytes } from "./bytes";
+export { base64ToBytes, bytesToBase64, copyBytes } from "./bytes";
 export { createMatrixClient } from "./client";
-export { loadMatrixCore, MatrixWasmCore } from "./wasm";
-export { startMatrixPolling } from "./polling";
 export type {
   MatrixClient,
   MatrixBeeper,
@@ -70,20 +68,3 @@ export type {
   UploadMediaResult,
   UserInfo,
 } from "./types";
-export type { GoRuntime, LoadMatrixCoreOptions } from "./wasm";
-export type {
-  MatrixApplySyncResponseOptions,
-  MatrixCore,
-  MatrixCoreEvent,
-  MatrixCoreHost,
-  MatrixCoreInitOptions,
-  MatrixFetchMessagesOptions,
-  MatrixLoginOptions,
-  MatrixLoginSession,
-  MatrixMediaAttachment,
-  MatrixRawMessage,
-  MatrixSendMediaMessageOptions,
-  MatrixSendMessageOptions,
-  MatrixStore as MatrixStateStore,
-  MatrixTokenLoginOptions,
-} from "./runtime-types";

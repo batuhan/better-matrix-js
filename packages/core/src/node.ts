@@ -6,7 +6,7 @@ import { createMatrixClient as createRuntimeMatrixClient, type MatrixClient } fr
 import type { MatrixClientOptions } from "./types";
 import { loadMatrixCore, type LoadMatrixCoreOptions, type MatrixWasmCore } from "./wasm";
 
-export interface LoadMatrixCoreFromNodeOptions extends Omit<LoadMatrixCoreOptions, "wasmUrl"> {
+interface LoadMatrixCoreFromNodeOptions extends Omit<LoadMatrixCoreOptions, "wasmUrl"> {
   wasmExecPath?: string;
   wasmPath?: string;
 }
@@ -121,7 +121,7 @@ class NodeMatrixClient implements MatrixClient {
   }
 }
 
-export async function loadMatrixCoreFromNodePackage(
+async function loadMatrixCoreFromNodePackage(
   options: LoadMatrixCoreFromNodeOptions = {}
 ): Promise<MatrixWasmCore> {
   const { wasmExecPath, wasmPath, ...coreOptions } = options;

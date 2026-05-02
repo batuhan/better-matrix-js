@@ -1,8 +1,25 @@
-import type {
-  MatrixLoginOptions,
-  MatrixLoginSession,
-  MatrixTokenLoginOptions,
-} from "better-matrix-js";
+export interface MatrixLoginOptions {
+  deviceId?: string;
+  homeserverUrl: string;
+  initialDeviceDisplayName?: string;
+  password: string;
+  username: string;
+}
+
+export interface MatrixTokenLoginOptions {
+  deviceId?: string;
+  homeserverUrl: string;
+  initialDeviceDisplayName?: string;
+  loginToken: string;
+  type?: "m.login.token" | "org.matrix.login.jwt";
+}
+
+export interface MatrixLoginSession {
+  accessToken: string;
+  deviceId: string;
+  homeserverUrl: string;
+  userId: string;
+}
 
 export async function loginMatrix(options: MatrixLoginOptions): Promise<MatrixLoginSession> {
   return matrixLoginRequest(options.homeserverUrl, "Matrix login failed", {

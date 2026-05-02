@@ -1,3 +1,27 @@
+import type {
+  MatrixInviteEvent,
+  MatrixEncryptedFile,
+  MatrixMediaAttachment,
+  MatrixMediaInfo,
+  MatrixMentions,
+  MatrixMessageEvent,
+  MatrixRawEvent,
+  MatrixReactionEvent,
+  MatrixRoomThreadSummary,
+} from "./generated-runtime-types";
+
+export type {
+  MatrixEncryptedFile,
+  MatrixInviteEvent,
+  MatrixMediaAttachment,
+  MatrixMediaInfo,
+  MatrixMentions,
+  MatrixMessageEvent,
+  MatrixRawEvent,
+  MatrixReactionEvent,
+  MatrixRoomThreadSummary,
+} from "./generated-runtime-types";
+
 export interface MatrixLoginOptions {
   deviceId?: string;
   homeserverUrl: string;
@@ -38,52 +62,6 @@ export interface MatrixCoreInitOptions {
 export interface MatrixWhoami {
   deviceId: string;
   userId: string;
-}
-
-export interface MatrixRawEvent {
-  content: Record<string, unknown>;
-  eventId: string;
-  isMe?: boolean;
-  originServerTs?: number;
-  raw: unknown;
-  roomId: string;
-  sender: string;
-  type: string;
-}
-
-export interface MatrixMentions {
-  room?: boolean;
-  userIds?: string[];
-}
-
-export interface MatrixMediaInfo {
-  contentType?: string;
-  duration?: number;
-  height?: number;
-  size?: number;
-  width?: number;
-}
-
-export interface MatrixMessageEvent extends MatrixRawEvent {
-  attachments?: MatrixMediaAttachment[];
-  body: string;
-  formattedBody?: string;
-  isEncrypted?: boolean;
-  isEdited?: boolean;
-  msgtype: string;
-  threadRootEventId?: string;
-}
-
-export interface MatrixReactionEvent extends MatrixRawEvent {
-  added?: boolean;
-  key: string;
-  relatesToEventId: string;
-}
-
-export interface MatrixInviteEvent {
-  inviter?: string;
-  roomId: string;
-  raw: unknown;
 }
 
 export type MatrixCoreEvent =
@@ -215,20 +193,6 @@ export interface MatrixDownloadMediaResult {
   bytesBase64: string;
 }
 
-export interface MatrixEncryptedFile {
-  hashes: { sha256: string };
-  iv: string;
-  key: {
-    alg: "A256CTR";
-    ext: true;
-    k: string;
-    key_ops: ["encrypt", "decrypt"];
-    kty: "oct";
-  };
-  url: string;
-  v: "v2";
-}
-
 export interface MatrixUploadEncryptedMediaResult {
   contentUri: string;
   file: MatrixEncryptedFile;
@@ -306,14 +270,6 @@ export interface MatrixRawMessage {
   roomId: string;
 }
 
-export interface MatrixMediaAttachment {
-  contentUri?: string;
-  encryptedFile?: MatrixEncryptedFile;
-  filename?: string;
-  info?: MatrixMediaInfo;
-  msgtype: "m.image" | "m.video" | "m.audio" | "m.file";
-}
-
 export interface MatrixSendMediaMessageOptions extends MatrixMediaInfo {
   body?: string;
   bytesBase64: string;
@@ -322,12 +278,6 @@ export interface MatrixSendMediaMessageOptions extends MatrixMediaInfo {
   msgtype?: "m.image" | "m.video" | "m.audio" | "m.file";
   roomId: string;
   threadRootEventId?: string;
-}
-
-export interface MatrixRoomThreadSummary {
-  lastReplyTs?: number;
-  replyCount?: number;
-  root: MatrixMessageEvent;
 }
 
 export interface MatrixListRoomThreadsOptions {

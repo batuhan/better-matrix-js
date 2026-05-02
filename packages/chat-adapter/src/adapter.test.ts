@@ -1,4 +1,4 @@
-import type { MatrixCore, MatrixCoreEvent } from "better-matrix-js";
+import type { MatrixClient, MatrixClientEvent, MatrixCore, MatrixCoreEvent } from "better-matrix-js";
 import type { ChatInstance, Logger, StateAdapter } from "chat";
 import { describe, expect, it, vi } from "vitest";
 import { MatrixAdapter } from "./adapter";
@@ -141,20 +141,208 @@ function makeCore(overrides: Partial<MatrixCore> = {}) {
     whoami: vi.fn(async () => ({ deviceId: "DEVICE", userId: "@bot:example.com" })),
     ...overrides,
   };
+  const listeners = new Set<(event: MatrixClientEvent) => void>();
+  const client: MatrixClient = {
+    beeper: {
+      streams: {
+        create: core.createBeeperStream,
+        publish: core.publishBeeperStream,
+        register: core.registerBeeperStream,
+      },
+    },
+    close: core.close,
+    connect: () =>
+      core.init({
+        accessToken: "token",
+        homeserverUrl: "https://matrix.beeper.com",
+      }),
+    events: {
+      on: (next) => {
+        listeners.add(next);
+        return () => {
+          listeners.delete(next);
+        };
+      },
+      onMessage: (next) => {
+        listeners.add(next as (event: MatrixClientEvent) => void);
+        return () => undefined;
+      },
+      onReaction: (next) => {
+        listeners.add(next as (event: MatrixClientEvent) => void);
+        return () => undefined;
+      },
+    },
+    media: {
+      download: async (options) => {
+        const result = await core.downloadMedia(options);
+        return { bytes: base64ToBytes(result.bytesBase64) };
+      },
+      downloadEncrypted: async (options) => {
+        const result = await core.downloadEncryptedMedia(options);
+        return { bytes: base64ToBytes(result.bytesBase64) };
+      },
+      upload: core.uploadMedia as MatrixClient["media"]["upload"],
+      uploadEncrypted: core.uploadEncryptedMedia as MatrixClient["media"]["uploadEncrypted"],
+    },
+    messages: {
+      edit: (options) =>
+        core.editMessage({
+          body: options.text,
+          content: options.content,
+          formattedBody: options.html,
+          mentions: options.mentions,
+          messageId: options.eventId,
+          roomId: options.roomId,
+        }),
+      get: async (options) => {
+        const result = await core.fetchMessage({ messageId: options.eventId, roomId: options.roomId });
+        return { message: result.message ? testMessageEvent(result.message) : null };
+      },
+      list: async (options) => {
+        const result = await core.fetchMessages({
+          cursor: options.cursor,
+          direction: options.direction,
+          limit: options.limit,
+          roomId: options.roomId,
+          threadRootEventId: options.threadRoot,
+        });
+        return { messages: result.messages.map(testMessageEvent), nextCursor: result.nextCursor };
+      },
+      redact: (options) => core.deleteMessage({ messageId: options.eventId, reason: options.reason, roomId: options.roomId }),
+      send: (options) =>
+        core.postMessage({
+          body: options.text,
+          content: options.content,
+          formattedBody: options.html,
+          mentions: options.mentions,
+          replyToEventId: options.replyTo,
+          roomId: options.roomId,
+          threadRootEventId: options.threadRoot,
+        }),
+      sendMedia: (options) =>
+        core.postMediaMessage({
+          body: options.caption,
+          bytesBase64: bytesToBase64(options.bytes),
+          contentType: options.contentType,
+          filename: options.filename,
+          height: options.height,
+          msgtype: `m.${options.kind}` as "m.image" | "m.video" | "m.audio" | "m.file",
+          roomId: options.roomId,
+          size: options.size,
+          threadRootEventId: options.threadRoot,
+          width: options.width,
+        }),
+    },
+    reactions: {
+      redact: (options) => core.removeReaction({ emoji: options.key, messageId: options.eventId, roomId: options.roomId }),
+      send: (options) => core.addReaction({ emoji: options.key, messageId: options.eventId, roomId: options.roomId }),
+    },
+    rooms: {
+      get: core.fetchRoom,
+      invite: core.inviteUser,
+      join: core.joinRoom,
+      leave: core.leaveRoom,
+      listJoined: core.fetchJoinedRooms,
+      openDM: core.openDM,
+      threads: {
+        list: async (options) => {
+          const result = await core.listRoomThreads(options);
+          return {
+            nextCursor: result.nextCursor,
+            threads: result.threads.map((thread) => ({
+              lastReplyTimestamp: thread.lastReplyTs,
+              replyCount: thread.replyCount,
+              root: testMessageEvent(thread.root),
+            })),
+          };
+        },
+      },
+    },
+    sync: {
+      applyResponse: core.applySyncResponse,
+      once: core.syncOnce,
+      start: async () => undefined,
+      stop: async () => undefined,
+    },
+    typing: { set: core.setTyping },
+    users: { get: core.getUser },
+    whoami: core.whoami,
+  };
   return {
+    client,
     core,
     emit(event: MatrixCoreEvent) {
       listener?.(event);
+      const mapped = testClientEvent(event);
+      if (mapped) {
+        for (const next of listeners) next(mapped);
+      }
     },
+  };
+}
+
+function testClientEvent(event: MatrixCoreEvent): MatrixClientEvent | null {
+  if (event.type === "message") return testMessageEvent(event.event);
+  if (event.type === "reaction") {
+    return {
+      added: event.event.added ?? true,
+      class: "message",
+      content: event.event.content,
+      eventId: event.event.eventId,
+      key: event.event.key,
+      kind: "reaction",
+      raw: event.event.raw,
+      relatesTo: event.event.relatesToEventId,
+      roomId: event.event.roomId,
+      sender: { isMe: event.event.isMe ?? false, userId: event.event.sender },
+      timestamp: event.event.originServerTs,
+      type: event.event.type,
+    };
+  }
+  if (event.type === "invite") return { kind: "invite", ...event.event };
+  if (event.type === "crypto_status") return { kind: "crypto", state: "enabled" };
+  if (event.type === "decryption_error") return { error: event.error, kind: "decryptionError" };
+  if (event.type === "error") return { error: event.error, kind: "error" };
+  if (event.type === "sync_status") return { kind: "sync", state: "synced" };
+  return null;
+}
+
+function testMessageEvent(event: Extract<MatrixCoreEvent, { type: "message" }>["event"]): MatrixClientEvent & { kind: "message" } {
+  return {
+    attachments: (event.attachments ?? []).map((attachment) => ({
+      contentType: attachment.info?.contentType,
+      contentUri: attachment.contentUri,
+      encryptedFile: attachment.encryptedFile,
+      filename: attachment.filename,
+      height: attachment.info?.height,
+      kind: attachment.msgtype.slice(2) as "image" | "video" | "audio" | "file",
+      size: attachment.info?.size,
+      width: attachment.info?.width,
+    })),
+    class: "message",
+    content: event.content,
+    edited: event.isEdited ?? false,
+    encrypted: event.isEncrypted ?? false,
+    eventId: event.eventId,
+    html: event.formattedBody,
+    kind: "message",
+    messageType: event.msgtype,
+    raw: event.raw,
+    roomId: event.roomId,
+    sender: { isMe: event.isMe ?? false, userId: event.sender },
+    text: event.body,
+    threadRoot: event.threadRootEventId,
+    timestamp: event.originServerTs,
+    type: event.type,
   };
 }
 
 describe("MatrixAdapter", () => {
   it("uses Beeper as the default homeserver", async () => {
-    const { core } = makeCore();
+    const { client, core } = makeCore();
     const adapter = new MatrixAdapter({
       token: "token",
-      core,
+      client,
       polling: { enabled: false },
     });
 
@@ -166,11 +354,11 @@ describe("MatrixAdapter", () => {
     });
   });
 
-  it("passes fast startup cursor options to the Matrix core", async () => {
-    const { core } = makeCore();
+  it("connects the injected Matrix client", async () => {
+    const { client, core } = makeCore();
     const adapter = new MatrixAdapter({
       token: "token",
-      core,
+      client,
       deviceId: "DEVICE",
       homeserver: "https://matrix.example.com",
       initialSync: "persisted",
@@ -180,21 +368,14 @@ describe("MatrixAdapter", () => {
     });
     await adapter.initialize(makeChat());
 
-    expect(core.init).toHaveBeenCalledWith({
-      accessToken: "token",
-      deviceId: "DEVICE",
-      homeserverUrl: "https://matrix.example.com",
-      initialSyncMode: "persisted",
-      initialSyncSince: "s123",
-      userId: "@bot:example.com",
-    });
+    expect(core.init).toHaveBeenCalledOnce();
   });
 
   it("parses Matrix formatted HTML and m.mentions into Chat SDK messages", async () => {
-    const { core } = makeCore();
+    const { client, core } = makeCore();
     const adapter = new MatrixAdapter({
       token: "token",
-      core,
+      client,
       homeserver: "https://matrix.example.com",
       polling: { enabled: false },
     });
@@ -224,10 +405,10 @@ describe("MatrixAdapter", () => {
   });
 
   it("only derives thread ids from Matrix thread relations", async () => {
-    const { core } = makeCore();
+    const { client, core } = makeCore();
     const adapter = new MatrixAdapter({
       token: "token",
-      core,
+      client,
       homeserver: "https://matrix.example.com",
       polling: { enabled: false },
     });
@@ -276,10 +457,10 @@ describe("MatrixAdapter", () => {
   });
 
   it("posts formatted text with Matrix mentions and media attachments", async () => {
-    const { core } = makeCore();
+    const { client, core } = makeCore();
     const adapter = new MatrixAdapter({
       token: "token",
-      core,
+      client,
       homeserver: "https://matrix.example.com",
       polling: { enabled: false },
     });
@@ -321,7 +502,7 @@ describe("MatrixAdapter", () => {
   });
 
   it("maps Chat SDK listThreads to Matrix room threads", async () => {
-    const { core } = makeCore({
+    const { client, core } = makeCore({
       listRoomThreads: vi.fn(async () => ({
         nextCursor: "next",
         threads: [
@@ -344,7 +525,7 @@ describe("MatrixAdapter", () => {
     });
     const adapter = new MatrixAdapter({
       token: "token",
-      core,
+      client,
       homeserver: "https://matrix.example.com",
       polling: { enabled: false },
     });
@@ -368,11 +549,11 @@ describe("MatrixAdapter", () => {
   });
 
   it("dispatches reaction removals from Matrix redactions", async () => {
-    const { core, emit } = makeCore();
+    const { client, core, emit } = makeCore();
     const chat = makeChat();
     const adapter = new MatrixAdapter({
       token: "token",
-      core,
+      client,
       homeserver: "https://matrix.example.com",
       polling: { enabled: false },
     });
@@ -404,10 +585,10 @@ describe("MatrixAdapter", () => {
   });
 
   it("auto-joins allowed invites", async () => {
-    const { core, emit } = makeCore();
+    const { client, core, emit } = makeCore();
     const adapter = new MatrixAdapter({
       token: "token",
-      core,
+      client,
       homeserver: "https://matrix.example.com",
       inviteAutoJoin: { inviterAllowlist: ["@alice:example.com"] },
       polling: { enabled: false },
@@ -429,14 +610,14 @@ describe("MatrixAdapter", () => {
   it("retries transient auto-join failures", async () => {
     vi.useFakeTimers();
     try {
-      const { core, emit } = makeCore({
+      const { client, core, emit } = makeCore({
         joinRoom: vi.fn()
           .mockRejectedValueOnce(new Error("M_LIMIT_EXCEEDED (HTTP 429): Too Many Requests"))
           .mockResolvedValueOnce({ raw: {}, roomId: "!room:example.com" }),
       });
       const adapter = new MatrixAdapter({
         token: "token",
-        core,
+      client,
         homeserver: "https://matrix.example.com",
         inviteAutoJoin: { inviterAllowlist: ["@alice:example.com"] },
         polling: { enabled: false },
@@ -461,12 +642,12 @@ describe("MatrixAdapter", () => {
   });
 
   it("dispatches slash commands from Matrix messages", async () => {
-    const { core, emit } = makeCore();
+    const { client, core, emit } = makeCore();
     const chat = makeChat();
     const adapter = new MatrixAdapter({
       token: "token",
       commandPrefix: "/",
-      core,
+      client,
       homeserver: "https://matrix.example.com",
       polling: { enabled: false },
     });
@@ -500,10 +681,10 @@ describe("MatrixAdapter", () => {
   });
 
   it("applies sync responses directly through the Matrix core", async () => {
-    const { core } = makeCore();
+    const { client, core } = makeCore();
     const adapter = new MatrixAdapter({
       token: "token",
-      core,
+      client,
       homeserver: "https://matrix.example.com",
       polling: { enabled: false },
     });
@@ -527,10 +708,10 @@ describe("MatrixAdapter", () => {
   });
 
   it("streams Beeper homeserver chunks as Beeper Desktop stream deltas", async () => {
-    const { core } = makeCore();
+    const { client, core } = makeCore();
     const adapter = new MatrixAdapter({
       token: "token",
-      core,
+      client,
       homeserver: "https://matrix.beeper.com",
       polling: { enabled: false },
     });
@@ -631,10 +812,10 @@ describe("MatrixAdapter", () => {
   });
 
   it("passes raw AI SDK stream parts through to Beeper", async () => {
-    const { core } = makeCore();
+    const { client, core } = makeCore();
     const adapter = new MatrixAdapter({
       token: "token",
-      core,
+      client,
       homeserver: "https://matrix.beeper-dev.com",
       polling: { enabled: false },
     });
@@ -683,10 +864,10 @@ describe("MatrixAdapter", () => {
   });
 
   it("maps Chat SDK task stream chunks to Beeper tool parts", async () => {
-    const { core } = makeCore();
+    const { client, core } = makeCore();
     const adapter = new MatrixAdapter({
       token: "token",
-      core,
+      client,
       homeserver: "https://matrix.beeper-staging.com",
       polling: { enabled: false },
     });
@@ -754,10 +935,10 @@ describe("MatrixAdapter", () => {
   });
 
   it("maps completed Chat SDK task stream chunks to Beeper tool output deltas", async () => {
-    const { core } = makeCore();
+    const { client, core } = makeCore();
     const adapter = new MatrixAdapter({
       token: "token",
-      core,
+      client,
       homeserver: "https://matrix.beeper.com",
       polling: { enabled: false },
     });
@@ -812,10 +993,10 @@ describe("MatrixAdapter", () => {
   });
 
   it("streams non-Beeper homeservers with debounced Matrix edits", async () => {
-    const { core } = makeCore();
+    const { client, core } = makeCore();
     const adapter = new MatrixAdapter({
       token: "token",
-      core,
+      client,
       homeserver: "https://matrix.example.com",
       polling: { enabled: false },
     });
@@ -840,10 +1021,10 @@ describe("MatrixAdapter", () => {
   });
 
   it("posts and edits Chat SDK plan objects as Matrix markdown", async () => {
-    const { core } = makeCore();
+    const { client, core } = makeCore();
     const adapter = new MatrixAdapter({
       token: "token",
-      core,
+      client,
       homeserver: "https://matrix.example.com",
       polling: { enabled: false },
     });
@@ -875,10 +1056,10 @@ describe("MatrixAdapter", () => {
   });
 
   it("maps Matrix profiles to Chat SDK user info", async () => {
-    const { core } = makeCore();
+    const { client, core } = makeCore();
     const adapter = new MatrixAdapter({
       token: "token",
-      core,
+      client,
       homeserver: "https://matrix.example.com",
       polling: { enabled: false },
     });
@@ -895,10 +1076,10 @@ describe("MatrixAdapter", () => {
   });
 
   it("rehydrates Matrix attachments with authenticated media downloads", async () => {
-    const { core } = makeCore();
+    const { client, core } = makeCore();
     const adapter = new MatrixAdapter({
       token: "token",
-      core,
+      client,
       homeserver: "https://matrix.example.com",
       polling: { enabled: false },
     });
@@ -918,4 +1099,8 @@ describe("MatrixAdapter", () => {
 
 function bytesToBase64(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("base64");
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  return new Uint8Array(Buffer.from(base64, "base64"));
 }

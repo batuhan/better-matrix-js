@@ -1,4 +1,3 @@
-import type { MatrixRawMessage } from "better-matrix-js";
 import type { RawMessage, StreamOptions } from "chat";
 import type { MatrixRawMessage as MatrixAdapterRawMessage } from "../../types";
 import { isStreamChunk, normalizeStreamPart, readString, streamChunkText, streamParts } from "../chunks";
@@ -17,7 +16,7 @@ export class BeeperStreamDriver implements MatrixStreamDriver {
     textStream: MatrixStream,
     options?: StreamOptions
   ): Promise<RawMessage<MatrixAdapterRawMessage>> {
-    const stream = await this.#options.core.createBeeperStream({
+    const stream = await this.#options.client.beeper.streams.create({
       roomId: this.#options.roomId,
       streamType: BEEPER_STREAM_EVENT_TYPE,
     });
@@ -36,7 +35,7 @@ export class BeeperStreamDriver implements MatrixStreamDriver {
       roomId: this.#options.roomId,
       turnId,
     });
-    await this.#options.core.registerBeeperStream({
+    await this.#options.client.beeper.streams.register({
       descriptor: stream.descriptor,
       eventId: target.id,
       roomId: this.#options.roomId,
@@ -172,7 +171,7 @@ export class BeeperStreamDriver implements MatrixStreamDriver {
     targetEventId: string,
     descriptor: Record<string, unknown>,
     options?: StreamOptions
-  ): Promise<MatrixRawMessage> {
+  ): Promise<MatrixAdapterRawMessage> {
     const delta = buildStreamDelta(turnId, seq, part, targetEventId, options);
     this.#options.logger?.debug("Beeper stream publish part", {
       eventId: targetEventId,
@@ -181,7 +180,7 @@ export class BeeperStreamDriver implements MatrixStreamDriver {
       seq,
       turnId,
     });
-    await this.#options.core.publishBeeperStream({
+    await this.#options.client.beeper.streams.publish({
       content: {
         [`${streamDescriptorType(descriptor)}.deltas`]: [delta],
       },

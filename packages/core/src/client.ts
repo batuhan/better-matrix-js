@@ -1,4 +1,6 @@
 import { startMatrixPolling, type MatrixPollingHandle } from "./polling";
+import { base64ToBytes, bytesToBase64 } from "./bytes";
+import { stripUndefined } from "./object";
 import type {
   MatrixCore,
   MatrixCoreEvent,
@@ -273,11 +275,13 @@ class DefaultMatrixClient implements MatrixClient {
           const result = await this.#coreRequired().listRoomThreads(opts);
           return stripUndefined({
             nextCursor: result.nextCursor,
-            threads: result.threads.map((thread) => ({
-              lastReplyTimestamp: thread.lastReplyTs,
-              replyCount: thread.replyCount,
-              root: toMessageEvent(thread.root),
-            })),
+            threads: result.threads.map((thread) =>
+              stripUndefined({
+                lastReplyTimestamp: thread.lastReplyTs,
+                replyCount: thread.replyCount,
+                root: toMessageEvent(thread.root),
+              })
+            ),
           });
         },
       },
@@ -321,11 +325,13 @@ class DefaultMatrixClient implements MatrixClient {
       this.#core = await loadMatrixCore(loadOptions);
       this.#unsubscribeCore = this.#core.onEvent((event) => this.#emit(event));
     }
+    const initialSyncMode: "persisted" | "latest" | "catch_up" | undefined =
+      this.#options.initialSync === "catchUp" ? "catch_up" : this.#options.initialSync;
     return this.#core.init(stripUndefined({
       accessToken: this.#options.token,
       deviceId: this.#options.deviceId,
       homeserverUrl: this.#options.homeserver,
-      initialSyncMode: this.#options.initialSync === "catchUp" ? "catch_up" : this.#options.initialSync,
+      initialSyncMode,
       initialSyncSince: this.#options.since,
       pickleKey: this.#options.pickleKey,
       recoveryCode: this.#options.recoveryCode,
@@ -392,8 +398,8 @@ function toClientEvent(event: MatrixCoreEvent): MatrixClientEvent | null {
       event: event.event
         ? { eventId: event.event.eventId, roomId: event.event.roomId, senderId: event.event.sender }
         : undefined,
-      kind: "decryptionError",
-    });
+      kind: "decryptionError" as const,
+    }) as MatrixClientEvent;
   }
   if (event.type === "error") return { error: event.error, kind: "error" };
   return null;
@@ -402,13 +408,13 @@ function toClientEvent(event: MatrixCoreEvent): MatrixClientEvent | null {
 function toMessageEvent(event: RuntimeMessageEvent): MatrixMessageEvent {
   return stripUndefined({
     attachments: (event.attachments ?? []).map(toAttachment),
-    class: "message",
+    class: "message" as const,
     content: event.content,
     edited: event.isEdited ?? false,
     encrypted: event.isEncrypted ?? false,
     eventId: event.eventId,
     html: event.formattedBody,
-    kind: "message",
+    kind: "message" as const,
     messageType: event.msgtype,
     raw: event.raw,
     roomId: event.roomId,
@@ -417,24 +423,24 @@ function toMessageEvent(event: RuntimeMessageEvent): MatrixMessageEvent {
     threadRoot: event.threadRootEventId,
     timestamp: event.originServerTs,
     type: event.type,
-  });
+  }) as MatrixMessageEvent;
 }
 
 function toReactionEvent(event: RuntimeReactionEvent): MatrixReactionEvent {
   return stripUndefined({
     added: event.added ?? true,
-    class: "message",
+    class: "message" as const,
     content: event.content,
     eventId: event.eventId,
     key: event.key,
-    kind: "reaction",
+    kind: "reaction" as const,
     raw: event.raw,
     relatesTo: event.relatesToEventId,
     roomId: event.roomId,
     sender: { isMe: event.isMe ?? false, userId: event.sender },
     timestamp: event.originServerTs,
     type: event.type,
-  });
+  }) as MatrixReactionEvent;
 }
 
 function toAttachment(
@@ -466,11 +472,11 @@ function toSyncEvent(event: Extract<MatrixCoreEvent, { type: "sync_status" }>): 
     durationMs: event.durationMs,
     error: event.error,
     failures: event.failures,
-    kind: "sync",
+    kind: "sync" as const,
     nextRetryMs: event.nextRetryMs,
     state: states[event.status],
     step: event.step,
-  });
+  }) as MatrixSyncStatusEvent;
 }
 
 function toCryptoEvent(
@@ -489,29 +495,7 @@ function toCryptoEvent(
     error: event.error,
     keyBackupVersion: event.keyBackupVersion,
     keyId: event.keyId,
-    kind: "crypto",
+    kind: "crypto" as const,
     state: states[event.status],
-  });
-}
-
-function stripUndefined<T extends object>(value: T): any {
-  return Object.fromEntries(
-    Object.entries(value).filter((entry): entry is [string, unknown] => entry[1] !== undefined)
-  ) as T;
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(bytes).toString("base64");
-  }
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-
-function base64ToBytes(base64: string): Uint8Array {
-  if (typeof Buffer !== "undefined") {
-    return new Uint8Array(Buffer.from(base64, "base64"));
-  }
-  return Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+  }) as MatrixCryptoStatusEvent;
 }

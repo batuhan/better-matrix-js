@@ -1,17 +1,14 @@
 import {
-  loadMatrixCore,
-  startMatrixPolling,
-  type LoadMatrixCoreOptions,
-  type MatrixCore,
-  type MatrixCoreEvent,
-  type MatrixCoreHost,
-  type MatrixCoreInitOptions,
+  base64ToBytes,
+  bytesToBase64,
+  createMatrixClient,
+  type MatrixAttachment as MatrixClientAttachment,
+  type MatrixClient,
+  type MatrixClientEvent,
   type MatrixEncryptedFile,
-  type MatrixFetchMessagesOptions,
-  type MatrixStateStore,
-  type MatrixMediaAttachment,
-  type MatrixSendMediaMessageOptions,
-  type MatrixSendMessageOptions,
+  type MatrixMessageEvent,
+  type RoomInfo,
+  type MatrixStore,
 } from "better-matrix-js";
 import type {
   Adapter,
@@ -52,10 +49,6 @@ import {
 } from "./thread-id";
 import type { MatrixAdapterConfig, MatrixRawMessage, MatrixChatThreadRef } from "./types";
 
-type MatrixMessageEvent = Extract<MatrixCoreEvent, { type: "message" }>["event"];
-type MatrixPollingHandle = ReturnType<typeof startMatrixPolling>;
-type MatrixRoomInfo = Awaited<ReturnType<MatrixCore["fetchRoom"]>>;
-
 interface RoomCacheEntry {
   isDM?: boolean;
   memberCount?: number;
@@ -66,11 +59,11 @@ interface RoomCacheEntry {
 }
 
 interface OutboundUpload {
-  bytesBase64: string;
+  bytes: Uint8Array;
   contentType?: string;
   filename: string;
   height?: number;
-  msgtype: "m.image" | "m.video" | "m.audio" | "m.file";
+  kind: "image" | "video" | "audio" | "file";
   size?: number;
   width?: number;
 }
@@ -108,6 +101,7 @@ interface MatrixSyncResponsePayload {
 const INVITE_JOIN_MAX_ATTEMPTS = 5;
 const INVITE_JOIN_RETRY_BASE_MS = 1000;
 const DEFAULT_HOMESERVER_URL = "https://matrix.beeper.com";
+type MatrixRoomInfo = RoomInfo;
 
 export class MatrixAdapter {
   readonly name = "matrix";
@@ -116,15 +110,14 @@ export class MatrixAdapter {
 
   #chat: ChatInstance | null = null;
   #config: MatrixAdapterConfig;
-  #core: MatrixCore | null = null;
+  #client: MatrixClient | null = null;
   #formatConverter = new MatrixFormatConverter();
   #logger: Logger;
   #inviteJoinTasks = new Map<string, Promise<void>>();
   #messageThreadIds = new Map<string, string>();
-  #polling: MatrixPollingHandle | null = null;
   #roomCache = new Map<string, RoomCacheEntry>();
   #roomAllowlist: Set<string> | null;
-  #unsubscribeCore: (() => void) | null = null;
+  #unsubscribeClient: (() => void) | null = null;
   #userId: string | null = null;
   #webhookOptions: WebhookOptions | undefined;
   #isBeeperHomeserver: boolean;
@@ -141,67 +134,30 @@ export class MatrixAdapter {
   async initialize(chat: ChatInstance): Promise<void> {
     this.#chat = chat;
     this.#logger = chat.getLogger("matrix");
-    this.#core = await this.#resolveCore();
-    this.#unsubscribeCore?.();
-    this.#unsubscribeCore = this.#core.onEvent((event) => this.#handleCoreEvent(event));
-    const initOptions: MatrixCoreInitOptions = {
-      accessToken: this.#config.token,
-      homeserverUrl: this.#homeserverUrl,
-    };
-    if (this.#config.pickleKey) {
-      initOptions.pickleKey = this.#config.pickleKey;
-    }
-    if (this.#config.deviceId) {
-      initOptions.deviceId = this.#config.deviceId;
-    }
-    if (this.#config.initialSync) {
-      initOptions.initialSyncMode =
-        this.#config.initialSync === "catchUp" ? "catch_up" : this.#config.initialSync;
-    }
-    if (this.#config.since) {
-      initOptions.initialSyncSince = this.#config.since;
-    }
-    if (this.#config.recoveryKey) {
-      initOptions.recoveryKey = this.#config.recoveryKey;
-    }
-    if (this.#config.recoveryCode) {
-      initOptions.recoveryCode = this.#config.recoveryCode;
-    }
-    if (this.#config.verifyRecoveryOnStart !== undefined) {
-      initOptions.verifyRecoveryOnStart = this.#config.verifyRecoveryOnStart;
-    }
-    if (this.#config.userId) {
-      initOptions.userId = this.#config.userId;
-    }
-    const whoami = await this.#core.init(initOptions);
+    this.#client = await this.#resolveClient();
+    this.#unsubscribeClient?.();
+    this.#unsubscribeClient = this.#client.events.on((event) => this.#handleClientEvent(event));
+    const whoami = await this.#client.connect();
     this.#userId = whoami.userId;
     this.botUserId = whoami.userId;
 
     if (this.#config.polling?.enabled !== false) {
-      const pollingOptions: Parameters<typeof startMatrixPolling>[1] = {};
+      const pollingOptions = {};
       if (this.#config.polling?.retryDelayMs !== undefined) {
-        pollingOptions.retryDelayMs = this.#config.polling.retryDelayMs;
+        Object.assign(pollingOptions, { retryDelayMs: this.#config.polling.retryDelayMs });
       }
       if (this.#config.polling?.timeoutMs !== undefined) {
-        pollingOptions.timeoutMs = this.#config.polling.timeoutMs;
+        Object.assign(pollingOptions, { timeoutMs: this.#config.polling.timeoutMs });
       }
-      pollingOptions.onError = (error, details) => {
-        this.#logger.warn("Matrix polling retrying", { error, ...details });
-      };
-      pollingOptions.onStatus = (status) => {
-        this.#logger.debug("Matrix polling status", status);
-      };
-      this.#polling = startMatrixPolling(this.#core, pollingOptions);
+      await this.#client.sync.start(pollingOptions);
     }
   }
 
   async disconnect(): Promise<void> {
-    await this.#polling?.stop();
-    this.#polling = null;
-    this.#unsubscribeCore?.();
-    this.#unsubscribeCore = null;
-    await this.#core?.close();
-    this.#core = null;
+    this.#unsubscribeClient?.();
+    this.#unsubscribeClient = null;
+    await this.#client?.close();
+    this.#client = null;
     this.#chat = null;
     this.#messageThreadIds.clear();
     this.#userId = null;
@@ -231,7 +187,7 @@ export class MatrixAdapter {
       if (typeof payload.since === "string") {
         Object.assign(applyOptions, { since: payload.since });
       }
-      await this.#requireCore().applySyncResponse(applyOptions);
+      await this.#requireClient().sync.applyResponse(applyOptions);
     } finally {
       this.#webhookOptions = undefined;
     }
@@ -286,7 +242,7 @@ export class MatrixAdapter {
     threadId: string,
     message: AdapterPostableMessage
   ): Promise<RawMessage<MatrixRawMessage>> {
-    const core = this.#requireCore();
+    const client = this.#requireClient();
     const parsed = this.decodeThreadId(threadId);
     const rendered = this.#formatConverter.renderPostableMessage(message);
     const uploads = await this.#collectUploads(message);
@@ -297,36 +253,36 @@ export class MatrixAdapter {
     let first: RawMessage<MatrixRawMessage> | null = null;
 
     if (body.length > 0) {
-      const postOptions: MatrixSendMessageOptions = {
-        body,
+      const postOptions = {
+        text: body,
         roomId: parsed.roomId,
       };
       if (formattedBody !== undefined) {
-        postOptions.formattedBody = formattedBody;
+        Object.assign(postOptions, { html: formattedBody });
       }
       if (rendered.mentions !== undefined) {
-        postOptions.mentions = rendered.mentions;
+        Object.assign(postOptions, { mentions: rendered.mentions });
       }
       if (replyToEventId !== undefined) {
-        postOptions.replyToEventId = replyToEventId;
+        Object.assign(postOptions, { replyTo: replyToEventId });
       }
       if (parsed.eventId !== undefined) {
-        postOptions.threadRootEventId = parsed.eventId;
+        Object.assign(postOptions, { threadRoot: parsed.eventId });
       }
-      const raw = await core.postMessage(postOptions);
+      const raw = await client.messages.send(postOptions);
       first = this.#rawMessage(raw.eventId, parsed.roomId, threadId, raw.raw);
     }
 
     for (const upload of uploads) {
-      const postOptions: MatrixSendMediaMessageOptions = {
+      const postOptions = {
         ...upload,
-        body: upload.filename,
+        caption: upload.filename,
         roomId: parsed.roomId,
       };
       if (parsed.eventId !== undefined) {
-        postOptions.threadRootEventId = parsed.eventId;
+        Object.assign(postOptions, { threadRoot: parsed.eventId });
       }
-      const raw = await core.postMediaMessage(postOptions);
+      const raw = await client.messages.sendMedia(postOptions);
       first ??= this.#rawMessage(raw.eventId, parsed.roomId, threadId, raw.raw);
     }
 
@@ -341,13 +297,13 @@ export class MatrixAdapter {
     messageId: string,
     message: AdapterPostableMessage
   ): Promise<RawMessage<MatrixRawMessage>> {
-    const core = this.#requireCore();
+    const client = this.#requireClient();
     const parsed = this.decodeThreadId(threadId);
     const rendered = this.#formatConverter.renderPostableMessage(message);
     const linkLines = this.#collectLinkOnlyAttachmentLines(message);
     const editOptions = {
-      body: mergeTextAndLinks(rendered.body, linkLines),
-      messageId,
+      eventId: messageId,
+      text: mergeTextAndLinks(rendered.body, linkLines),
       roomId: parsed.roomId,
     };
     if (this.#isBeeperHomeserver) {
@@ -355,12 +311,12 @@ export class MatrixAdapter {
     }
     const formattedBody = appendFormattedLinkLines(rendered.formattedBody, linkLines);
     if (formattedBody !== undefined) {
-      Object.assign(editOptions, { formattedBody });
+      Object.assign(editOptions, { html: formattedBody });
     }
     if (rendered.mentions !== undefined) {
       Object.assign(editOptions, { mentions: rendered.mentions });
     }
-    const raw = await core.editMessage(editOptions);
+    const raw = await client.messages.edit(editOptions);
     return this.#rawMessage(messageId, parsed.roomId, threadId, {
       logicalEventId: messageId,
       replacementEventId: raw.eventId,
@@ -375,7 +331,7 @@ export class MatrixAdapter {
   ): Promise<RawMessage<MatrixRawMessage>> {
     const parsed = this.decodeThreadId(threadId);
     const driver = await createMatrixStreamDriver({
-      core: this.#requireCore(),
+      client: this.#requireClient(),
       editMessage: (targetThreadId, messageId, markdown, content) =>
         content
           ? this.#editMessageWithContent(targetThreadId, messageId, markdown, content)
@@ -408,26 +364,26 @@ export class MatrixAdapter {
 
   async deleteMessage(threadId: string, messageId: string): Promise<void> {
     const parsed = this.decodeThreadId(threadId);
-    await this.#requireCore().deleteMessage({
-      messageId,
+    await this.#requireClient().messages.redact({
+      eventId: messageId,
       roomId: parsed.roomId,
     });
   }
 
   async addReaction(threadId: string, messageId: string, emoji: EmojiValue | string): Promise<void> {
     const parsed = this.decodeThreadId(threadId);
-    await this.#requireCore().addReaction({
-      emoji: defaultEmojiResolver.toGChat(emoji),
-      messageId,
+    await this.#requireClient().reactions.send({
+      key: defaultEmojiResolver.toGChat(emoji),
+      eventId: messageId,
       roomId: parsed.roomId,
     });
   }
 
   async removeReaction(threadId: string, messageId: string, emoji: EmojiValue | string): Promise<void> {
     const parsed = this.decodeThreadId(threadId);
-    await this.#requireCore().removeReaction({
-      emoji: defaultEmojiResolver.toGChat(emoji),
-      messageId,
+    await this.#requireClient().reactions.redact({
+      key: defaultEmojiResolver.toGChat(emoji),
+      eventId: messageId,
       roomId: parsed.roomId,
     });
   }
@@ -438,7 +394,7 @@ export class MatrixAdapter {
 
   async startTyping(threadId: string): Promise<void> {
     const parsed = this.decodeThreadId(threadId);
-    await this.#requireCore().setTyping({
+    await this.#requireClient().typing.set({
       roomId: parsed.roomId,
       timeoutMs: this.#config.typingTimeoutMs ?? 30_000,
       typing: true,
@@ -450,7 +406,13 @@ export class MatrixAdapter {
     options?: FetchOptions
   ): Promise<FetchResult<MatrixRawMessage>> {
     const parsed = this.decodeThreadId(threadId);
-    const request: MatrixFetchMessagesOptions = {
+    const request: {
+      cursor?: string;
+      direction?: "backward" | "forward";
+      limit?: number;
+      roomId: string;
+      threadRoot?: string;
+    } = {
       roomId: parsed.roomId,
     };
     if (options?.cursor !== undefined) {
@@ -463,9 +425,9 @@ export class MatrixAdapter {
       request.limit = options.limit;
     }
     if (parsed.eventId) {
-      request.threadRootEventId = parsed.eventId;
+      Object.assign(request, { threadRoot: parsed.eventId });
     }
-    const result = await this.#requireCore().fetchMessages(request);
+    const result = await this.#requireClient().messages.list(request);
     const response: FetchResult<MatrixRawMessage> = {
       messages: result.messages.map((event) =>
         this.#messageEventToMessage(event, parsed.eventId ? threadId : undefined)
@@ -479,8 +441,8 @@ export class MatrixAdapter {
 
   async fetchMessage(threadId: string, messageId: string): Promise<Message<MatrixRawMessage> | null> {
     const parsed = this.decodeThreadId(threadId);
-    const result = await this.#requireCore().fetchMessage({
-      messageId,
+    const result = await this.#requireClient().messages.get({
+      eventId: messageId,
       roomId: parsed.roomId,
     });
     return result.message
@@ -497,7 +459,7 @@ export class MatrixAdapter {
 
   async fetchChannelInfo(channelId: string): Promise<ChannelInfo> {
     const roomId = this.#roomIdFromChannelId(channelId);
-    const info = await this.#requireCore().fetchRoom({ roomId });
+    const info = await this.#requireClient().rooms.get({ roomId });
     this.#cacheRoom(info);
     const cached = this.#roomCache.get(roomId);
     const channelInfo: ChannelInfo = {
@@ -529,7 +491,7 @@ export class MatrixAdapter {
     const parsed = this.decodeThreadId(threadId);
     let cached = this.#roomCache.get(parsed.roomId);
     if (!cached) {
-      const info = await this.#requireCore().fetchRoom({ roomId: parsed.roomId });
+      const info = await this.#requireClient().rooms.get({ roomId: parsed.roomId });
       this.#cacheRoom(info);
       cached = this.#roomCache.get(parsed.roomId);
     }
@@ -568,15 +530,15 @@ export class MatrixAdapter {
     if (options.limit !== undefined) {
       Object.assign(request, { limit: options.limit });
     }
-    const result = await this.#requireCore().listRoomThreads(request);
+    const result = await this.#requireClient().rooms.threads.list(request);
     const threads = result.threads.map((summary) => {
       const threadId = this.encodeThreadId({ eventId: summary.root.eventId, roomId });
       const thread = {
         id: threadId,
         rootMessage: this.#messageEventToMessage(summary.root, threadId),
       };
-      if (summary.lastReplyTs !== undefined) {
-        Object.assign(thread, { lastReplyAt: new Date(summary.lastReplyTs) });
+      if (summary.lastReplyTimestamp !== undefined) {
+        Object.assign(thread, { lastReplyAt: new Date(summary.lastReplyTimestamp) });
       }
       if (summary.replyCount !== undefined) {
         Object.assign(thread, { replyCount: summary.replyCount });
@@ -597,7 +559,7 @@ export class MatrixAdapter {
   }
 
   async getUser(userId: string) {
-    const profile = await this.#requireCore().getUser({ userId });
+    const profile = await this.#requireClient().users.get({ userId });
     const fullName = profile.displayName ?? userId;
     const user: MatrixChatUserInfo = {
       fullName,
@@ -616,7 +578,7 @@ export class MatrixAdapter {
   }
 
   async openDM(userId: string): Promise<string> {
-    const result = await this.#requireCore().openDM({ userId });
+    const result = await this.#requireClient().rooms.openDM({ userId });
     const cacheEntry: RoomCacheEntry = {
       isDM: true,
       visibility: "private",
@@ -647,15 +609,15 @@ export class MatrixAdapter {
     };
   }
 
-  #handleCoreEvent(event: MatrixCoreEvent): void {
+  #handleClientEvent(event: MatrixClientEvent): void {
     if (!this.#chat) {
       return;
     }
-    if (event.type === "message") {
-      if (event.event.isMe || !this.#isRoomAllowed(event.event.roomId)) {
+    if (event.kind === "message") {
+      if (event.sender.isMe || !this.#isRoomAllowed(event.roomId)) {
         return;
       }
-      const message = this.#messageEventToMessage(event.event);
+      const message = this.#messageEventToMessage(event);
       this.#messageThreadIds.set(message.id, message.threadId);
       this.#chat.processMessage(this.#asChatAdapter(), message.threadId, message, this.#webhookOptions);
       const slash = this.#parseSlashCommand(message.text);
@@ -665,45 +627,45 @@ export class MatrixAdapter {
             adapter: this.#asChatAdapter(),
             channelId: this.channelIdFromThreadId(message.threadId),
             command: slash.command,
-            raw: event.event,
+            raw: event,
             text: slash.text,
-            triggerId: event.event.eventId,
+            triggerId: event.eventId,
             user: message.author,
           },
           this.#webhookOptions
         );
       }
-    } else if (event.type === "reaction") {
-      if (!this.#isRoomAllowed(event.event.roomId)) {
+    } else if (event.kind === "reaction") {
+      if (!this.#isRoomAllowed(event.roomId)) {
         return;
       }
       this.#chat.processReaction({
         adapter: this.#asChatAdapter(),
-        added: event.event.added ?? true,
-        emoji: defaultEmojiResolver.fromGChat(event.event.key),
-        messageId: event.event.relatesToEventId,
-        raw: event.event,
-        rawEmoji: event.event.key,
+        added: event.added,
+        emoji: defaultEmojiResolver.fromGChat(event.key),
+        messageId: event.relatesTo,
+        raw: event,
+        rawEmoji: event.key,
         threadId:
-          this.#messageThreadIds.get(event.event.relatesToEventId) ??
-          this.encodeThreadId({ roomId: event.event.roomId }),
+          this.#messageThreadIds.get(event.relatesTo) ??
+          this.encodeThreadId({ roomId: event.roomId }),
         user: {
-          fullName: event.event.sender,
+          fullName: event.sender.userId,
           isBot: "unknown",
-          isMe: event.event.isMe ?? event.event.sender === this.#userId,
-          userId: event.event.sender,
-          userName: matrixLocalpart(event.event.sender),
+          isMe: event.sender.isMe,
+          userId: event.sender.userId,
+          userName: matrixLocalpart(event.sender.userId),
         },
       }, this.#webhookOptions);
-    } else if (event.type === "invite") {
-      void this.#maybeAutoJoinInvite(event.event.roomId, event.event.inviter);
-    } else if (event.type === "crypto_status") {
+    } else if (event.kind === "invite") {
+      void this.#maybeAutoJoinInvite(event.roomId, event.inviter);
+    } else if (event.kind === "crypto") {
       this.#logger.debug("Matrix crypto status", event);
-    } else if (event.type === "decryption_error") {
+    } else if (event.kind === "decryptionError") {
       this.#logger.debug("Matrix decryption error", { error: event.error, event: event.event });
-    } else if (event.type === "sync_status") {
+    } else if (event.kind === "sync") {
       this.#logger.debug("Matrix sync status", event);
-    } else if (event.type === "error") {
+    } else if (event.kind === "error") {
       this.#logger.warn("Matrix core error", { error: event.error });
     }
   }
@@ -713,21 +675,21 @@ export class MatrixAdapter {
     overrideThreadId?: string
   ): Message<MatrixRawMessage> {
     const raw: MatrixRawMessage = {
-      body: event.body,
+      body: event.text,
       content: event.content,
       eventId: event.eventId,
-      msgtype: event.msgtype,
+      msgtype: event.messageType,
       raw: event.raw,
       roomId: event.roomId,
-      sender: event.sender,
+      sender: event.sender.userId,
       type: event.type,
-      ...(event.attachments !== undefined && { attachments: event.attachments }),
-      ...(event.formattedBody !== undefined && { formattedBody: event.formattedBody }),
-      ...(event.isEdited !== undefined && { isEdited: event.isEdited }),
-      ...(event.isEncrypted !== undefined && { isEncrypted: event.isEncrypted }),
-      ...(event.isMe !== undefined && { isMe: event.isMe }),
-      ...(event.originServerTs !== undefined && { originServerTs: event.originServerTs }),
-      ...(event.threadRootEventId !== undefined && { threadRootEventId: event.threadRootEventId }),
+      ...(event.attachments.length > 0 && { attachments: event.attachments }),
+      ...(event.html !== undefined && { formattedBody: event.html }),
+      ...(event.edited !== undefined && { isEdited: event.edited }),
+      ...(event.encrypted !== undefined && { isEncrypted: event.encrypted }),
+      ...(event.sender.isMe !== undefined && { isMe: event.sender.isMe }),
+      ...(event.timestamp !== undefined && { originServerTs: event.timestamp }),
+      ...(event.threadRoot !== undefined && { threadRootEventId: event.threadRoot }),
     };
     return this.parseMessage(raw, overrideThreadId);
   }
@@ -753,47 +715,43 @@ export class MatrixAdapter {
     };
   }
 
-  async #resolveCore(): Promise<MatrixCore> {
-    if (this.#config.core) {
-      return this.#config.core;
+  async #resolveClient(): Promise<MatrixClient> {
+    if (this.#config.client) {
+      return this.#config.client;
     }
-    if (this.#config.createCore) {
-      return this.#config.createCore();
+    if (this.#config.createClient) {
+      return this.#config.createClient();
     }
     if (this.#config.wasmUrl || this.#config.wasmBytes || this.#config.wasmModule) {
-      const options: LoadMatrixCoreOptions = {};
-      if (this.#config.go) {
-        options.go = this.#config.go;
-      }
-      options.host = this.#resolveHost();
-      if (this.#config.wasmBytes) {
-        options.wasmBytes = this.#config.wasmBytes;
-      }
-      if (this.#config.wasmModule) {
-        options.wasmModule = this.#config.wasmModule;
-      }
-      if (this.#config.wasmUrl) {
-        options.wasmUrl = this.#config.wasmUrl;
-      }
-      return loadMatrixCore(options);
+      return createMatrixClient(this.#clientOptions());
     }
-    const { loadMatrixCoreFromNodePackage } = await importNodeMatrixCore();
-    const options: NonNullable<Parameters<typeof loadMatrixCoreFromNodePackage>[0]> = {
-      host: this.#resolveHost(),
+    const { createMatrixClient: createNodeMatrixClient } = await importNodeMatrixClient();
+    return createNodeMatrixClient(this.#clientOptions());
+  }
+
+  #clientOptions() {
+    const options = {
+      homeserver: this.#homeserverUrl,
+      store: this.#config.store ?? this.#chatStateStore(),
+      token: this.#config.token,
     };
-    if (this.#config.go) {
-      options.go = this.#config.go;
+    if (this.#config.deviceId !== undefined) Object.assign(options, { deviceId: this.#config.deviceId });
+    if (this.#config.initialSync !== undefined) Object.assign(options, { initialSync: this.#config.initialSync });
+    if (this.#config.pickleKey !== undefined) Object.assign(options, { pickleKey: this.#config.pickleKey });
+    if (this.#config.recoveryCode !== undefined) Object.assign(options, { recoveryCode: this.#config.recoveryCode });
+    if (this.#config.recoveryKey !== undefined) Object.assign(options, { recoveryKey: this.#config.recoveryKey });
+    if (this.#config.since !== undefined) Object.assign(options, { since: this.#config.since });
+    if (this.#config.userId !== undefined) Object.assign(options, { userId: this.#config.userId });
+    if (this.#config.verifyRecoveryOnStart !== undefined) {
+      Object.assign(options, { verifyRecoveryOnStart: this.#config.verifyRecoveryOnStart });
     }
-    return loadMatrixCoreFromNodePackage(options);
+    if (this.#config.wasmBytes !== undefined) Object.assign(options, { wasmBytes: this.#config.wasmBytes });
+    if (this.#config.wasmModule !== undefined) Object.assign(options, { wasmModule: this.#config.wasmModule });
+    if (this.#config.wasmUrl !== undefined) Object.assign(options, { wasmUrl: this.#config.wasmUrl });
+    return options;
   }
 
-  #resolveHost(): MatrixCoreHost {
-    const host = { ...this.#config.host };
-    host.state ??= this.#config.store ?? this.#chatStateStore();
-    return host;
-  }
-
-  #chatStateStore(): MatrixStateStore {
+  #chatStateStore(): MatrixStore {
     if (!this.#chat) {
       throw new Error("Matrix adapter has not been initialized");
     }
@@ -806,11 +764,11 @@ export class MatrixAdapter {
     });
   }
 
-  #requireCore(): MatrixCore {
-    if (!this.#core) {
+  #requireClient(): MatrixClient {
+    if (!this.#client) {
       throw new Error("Matrix adapter has not been initialized");
     }
-    return this.#core;
+    return this.#client;
   }
 
   async #postMessageWithContent(
@@ -821,21 +779,21 @@ export class MatrixAdapter {
     if (!content) {
       return this.postMessage(threadId, { markdown });
     }
-    const core = this.#requireCore();
+    const client = this.#requireClient();
     const parsed = this.decodeThreadId(threadId);
     const rendered = this.#formatConverter.renderPostableMessage({ markdown });
-    const postOptions: MatrixSendMessageOptions = {
-      body: rendered.body,
+    const postOptions = {
+      text: rendered.body,
       content,
       roomId: parsed.roomId,
     };
     if (rendered.formattedBody !== undefined) {
-      postOptions.formattedBody = rendered.formattedBody;
+      Object.assign(postOptions, { html: rendered.formattedBody });
     }
     if (parsed.eventId !== undefined) {
-      postOptions.threadRootEventId = parsed.eventId;
+      Object.assign(postOptions, { threadRoot: parsed.eventId });
     }
-    const raw = await core.postMessage(postOptions);
+    const raw = await client.messages.send(postOptions);
     return this.#rawMessage(raw.eventId, parsed.roomId, threadId, raw.raw);
   }
 
@@ -845,22 +803,22 @@ export class MatrixAdapter {
     markdown: string,
     content: Record<string, unknown>
   ): Promise<RawMessage<MatrixRawMessage>> {
-    const core = this.#requireCore();
+    const client = this.#requireClient();
     const parsed = this.decodeThreadId(threadId);
     const rendered = this.#formatConverter.renderPostableMessage({ markdown });
-    const editOptions: Parameters<MatrixCore["editMessage"]>[0] = {
-      body: rendered.body,
+    const editOptions = {
+      eventId: messageId,
+      text: rendered.body,
       content: {
         ...(this.#isBeeperHomeserver ? { "com.beeper.dont_render_edited": true } : {}),
         ...content,
       },
-      messageId,
       roomId: parsed.roomId,
     };
     if (rendered.formattedBody !== undefined) {
-      editOptions.formattedBody = rendered.formattedBody;
+      Object.assign(editOptions, { html: rendered.formattedBody });
     }
-    const raw = await core.editMessage(editOptions);
+    const raw = await client.messages.edit(editOptions);
     return this.#rawMessage(messageId, parsed.roomId, threadId, {
       logicalEventId: messageId,
       replacementEventId: raw.eventId,
@@ -900,7 +858,7 @@ export class MatrixAdapter {
     return attachments.map((attachment) => this.#attachmentFromMatrix(raw, attachment));
   }
 
-  #attachmentFromMatrix(raw: MatrixRawMessage, attachment: MatrixMediaAttachment): Attachment {
+  #attachmentFromMatrix(raw: MatrixRawMessage, attachment: MatrixClientAttachment): Attachment {
     const metadata: MatrixAttachmentFetchMetadata = {
       matrixEventId: raw.eventId,
       matrixRoomId: raw.roomId,
@@ -914,41 +872,41 @@ export class MatrixAdapter {
     const chatAttachment: MatrixAttachment = {
       fetchMetadata: metadata,
       matrix: metadata,
-      type: attachmentTypeFromMsgtype(attachment.msgtype),
+      type: attachment.kind,
     };
-    if (attachment.info?.height !== undefined) {
-      chatAttachment.height = attachment.info.height;
+    if (attachment.height !== undefined) {
+      chatAttachment.height = attachment.height;
     }
-    if (attachment.info?.contentType !== undefined) {
-      chatAttachment.mimeType = attachment.info.contentType;
+    if (attachment.contentType !== undefined) {
+      chatAttachment.mimeType = attachment.contentType;
     }
     if (attachment.filename !== undefined) {
       chatAttachment.name = attachment.filename;
     }
-    if (attachment.info?.size !== undefined) {
-      chatAttachment.size = attachment.info.size;
+    if (attachment.size !== undefined) {
+      chatAttachment.size = attachment.size;
     }
     const url = attachment.contentUri ?? attachment.encryptedFile?.url;
     if (url !== undefined) {
       chatAttachment.url = url;
     }
-    if (attachment.info?.width !== undefined) {
-      chatAttachment.width = attachment.info.width;
+    if (attachment.width !== undefined) {
+      chatAttachment.width = attachment.width;
     }
     chatAttachment.fetchData = async () => bytesToBufferLike(await this.#downloadAttachment(metadata));
     return chatAttachment;
   }
 
-  #matrixAttachmentsFromContent(raw: MatrixRawMessage): MatrixMediaAttachment[] {
+  #matrixAttachmentsFromContent(raw: MatrixRawMessage): MatrixClientAttachment[] {
     const content = raw.content;
-    const msgtype = normalizeMatrixMsgtype(raw.msgtype ?? readString(content, "msgtype"));
-    if (!msgtype) {
+    const kind = attachmentKindFromMsgtype(raw.msgtype ?? readString(content, "msgtype"));
+    if (!kind) {
       return [];
     }
     const infoRecord = readRecord(content, "info");
     const info = infoRecord ? matrixMediaInfoFromRecord(infoRecord) : undefined;
     const encryptedFile = readEncryptedFile(content, "file");
-    const attachment: MatrixMediaAttachment = { msgtype };
+    const attachment: MatrixClientAttachment = { kind, ...info };
     const contentUri = readString(content, "url");
     if (contentUri !== undefined) {
       attachment.contentUri = contentUri;
@@ -962,23 +920,23 @@ export class MatrixAdapter {
       attachment.filename = filename;
     }
     if (info !== undefined) {
-      attachment.info = info;
+      Object.assign(attachment, info);
     }
     return [attachment];
   }
 
   async #downloadAttachment(metadata: MatrixAttachmentFetchMetadata): Promise<Uint8Array> {
-    const core = this.#requireCore();
+    const client = this.#requireClient();
     if (metadata.matrixEncryptedFile) {
       const file = parseEncryptedFileMetadata(metadata.matrixEncryptedFile);
-      const downloaded = await core.downloadEncryptedMedia({ file });
-      return base64ToBytes(downloaded.bytesBase64);
+      const downloaded = await client.media.downloadEncrypted({ file });
+      return downloaded.bytes;
     }
     if (!metadata.matrixContentUri) {
       throw new Error("Matrix attachment is missing media metadata");
     }
-    const downloaded = await core.downloadMedia({ contentUri: metadata.matrixContentUri });
-    return base64ToBytes(downloaded.bytesBase64);
+    const downloaded = await client.media.download({ contentUri: metadata.matrixContentUri });
+    return downloaded.bytes;
   }
 
   #isMention(raw: MatrixRawMessage, text: string): boolean {
@@ -1073,7 +1031,7 @@ export class MatrixAdapter {
     let lastError: unknown;
     for (let attempt = 1; attempt <= INVITE_JOIN_MAX_ATTEMPTS; attempt += 1) {
       try {
-        await this.#requireCore().joinRoom({ roomIdOrAlias: roomId });
+        await this.#requireClient().rooms.join({ roomIdOrAlias: roomId });
         return;
       } catch (error) {
         lastError = error;
@@ -1091,7 +1049,7 @@ interface ChatMatrixStateOptions {
   prefix: string;
 }
 
-class ChatMatrixState implements MatrixStateStore {
+class ChatMatrixState implements MatrixStore {
   readonly #indexKey: string;
   readonly #prefix: string;
   readonly #state: StateAdapter;
@@ -1142,7 +1100,7 @@ class ChatMatrixState implements MatrixStateStore {
   }
 }
 
-async function importNodeMatrixCore(): Promise<typeof import("better-matrix-js/node")> {
+async function importNodeMatrixClient(): Promise<typeof import("better-matrix-js/node")> {
   const dynamicImport = new Function("specifier", "return import(specifier)") as (
     specifier: string
   ) => Promise<typeof import("better-matrix-js/node")>;
@@ -1216,9 +1174,9 @@ function extractAttachmentsFromMessage(message: AdapterPostableMessage): Attachm
 async function uploadFromFile(file: FileUpload): Promise<OutboundUpload> {
   const bytes = await bytesFromBinary(file.data);
   const upload: OutboundUpload = {
-    bytesBase64: bytesToBase64(bytes),
+    bytes,
     filename: file.filename,
-    msgtype: msgtypeFromContentType(file.mimeType),
+    kind: attachmentKindFromContentType(file.mimeType),
     size: bytes.byteLength,
   };
   const contentType = normalizeOptionalString(file.mimeType);
@@ -1235,9 +1193,9 @@ async function uploadFromAttachment(attachment: Attachment): Promise<OutboundUpl
   }
   const bytes = await bytesFromBinary(data);
   const upload: OutboundUpload = {
-    bytesBase64: bytesToBase64(bytes),
+    bytes,
     filename: normalizeOptionalString(attachment.name) ?? defaultAttachmentName(attachment),
-    msgtype: msgtypeFromAttachment(attachment),
+    kind: attachmentKindFromAttachment(attachment),
     size: attachment.size ?? bytes.byteLength,
   };
   const contentType = normalizeOptionalString(attachment.mimeType);
@@ -1266,34 +1224,34 @@ function defaultAttachmentName(attachment: Attachment): string {
   return `${attachment.type || "file"}-${Date.now()}${extension}`;
 }
 
-function msgtypeFromAttachment(attachment: Attachment): "m.image" | "m.video" | "m.audio" | "m.file" {
+function attachmentKindFromAttachment(attachment: Attachment): MatrixClientAttachment["kind"] {
   if (attachment.type === "image") {
-    return "m.image";
+    return "image";
   }
   if (attachment.type === "video") {
-    return "m.video";
+    return "video";
   }
   if (attachment.type === "audio") {
-    return "m.audio";
+    return "audio";
   }
-  return msgtypeFromContentType(attachment.mimeType);
+  return attachmentKindFromContentType(attachment.mimeType);
 }
 
-function msgtypeFromContentType(contentType?: string): "m.image" | "m.video" | "m.audio" | "m.file" {
+function attachmentKindFromContentType(contentType?: string): MatrixClientAttachment["kind"] {
   const normalized = contentType?.toLowerCase();
   if (normalized?.startsWith("image/")) {
-    return "m.image";
+    return "image";
   }
   if (normalized?.startsWith("video/")) {
-    return "m.video";
+    return "video";
   }
   if (normalized?.startsWith("audio/")) {
-    return "m.audio";
+    return "audio";
   }
-  return "m.file";
+  return "file";
 }
 
-function attachmentTypeFromMsgtype(msgtype: string): Attachment["type"] {
+function attachmentKindFromMsgtype(msgtype?: string): MatrixClientAttachment["kind"] | null {
   if (msgtype === "m.image") {
     return "image";
   }
@@ -1303,18 +1261,14 @@ function attachmentTypeFromMsgtype(msgtype: string): Attachment["type"] {
   if (msgtype === "m.audio") {
     return "audio";
   }
-  return "file";
-}
-
-function normalizeMatrixMsgtype(value?: string): MatrixMediaAttachment["msgtype"] | null {
-  if (value === "m.image" || value === "m.video" || value === "m.audio" || value === "m.file") {
-    return value;
+  if (msgtype === "m.file") {
+    return "file";
   }
   return null;
 }
 
-function matrixMediaInfoFromRecord(record: Record<string, unknown>): MatrixMediaAttachment["info"] {
-  const info: NonNullable<MatrixMediaAttachment["info"]> = {};
+function matrixMediaInfoFromRecord(record: Record<string, unknown>): Omit<MatrixClientAttachment, "kind"> {
+  const info: Omit<MatrixClientAttachment, "kind"> = {};
   const contentType = readString(record, "mimetype") ?? readString(record, "contentType");
   if (contentType !== undefined) {
     info.contentType = contentType;
@@ -1411,31 +1365,6 @@ async function bytesFromBinary(data: Buffer | Blob | ArrayBuffer | ArrayBufferVi
     return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
   }
   throw new Error("Unsupported Matrix upload data");
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  const BufferCtor = getBufferCtor();
-  if (BufferCtor) {
-    return BufferCtor.from(bytes).toString("base64");
-  }
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
-  }
-  return btoa(binary);
-}
-
-function base64ToBytes(base64: string): Uint8Array {
-  const BufferCtor = getBufferCtor();
-  if (BufferCtor) {
-    return new Uint8Array(BufferCtor.from(base64, "base64"));
-  }
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
 }
 
 function bytesToBufferLike(bytes: Uint8Array): Buffer {

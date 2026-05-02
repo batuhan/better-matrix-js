@@ -1,4 +1,4 @@
-import type { MatrixCore } from "better-matrix-js";
+import type { MatrixClient } from "better-matrix-js";
 import type { Logger, RawMessage, StreamChunk, StreamOptions } from "chat";
 import type { MatrixRawMessage } from "../types";
 
@@ -13,7 +13,7 @@ export interface MatrixStreamDriver {
 }
 
 export interface MatrixStreamDriverOptions {
-  core: MatrixCore;
+  client: MatrixClient;
   editMessage(
     threadId: string,
     messageId: string,

@@ -1,8 +1,6 @@
 import type {
-  GoRuntime,
-  MatrixMediaAttachment,
-  MatrixCore,
-  MatrixCoreHost,
+  MatrixAttachment,
+  MatrixClient,
   MatrixStore,
 } from "better-matrix-js";
 
@@ -12,12 +10,10 @@ export interface MatrixChatThreadRef {
 }
 
 export interface MatrixAdapterConfig {
+  client?: MatrixClient;
   commandPrefix?: string;
-  core?: MatrixCore;
-  createCore?: () => Promise<MatrixCore>;
+  createClient?: () => MatrixClient | Promise<MatrixClient>;
   deviceId?: string;
-  go?: GoRuntime;
-  host?: MatrixCoreHost;
   homeserver?: string;
   initialSync?: "persisted" | "latest" | "catchUp";
   pickleKey?: string;
@@ -45,7 +41,7 @@ export interface MatrixAdapterConfig {
 }
 
 export interface MatrixRawMessage {
-  attachments?: MatrixMediaAttachment[];
+  attachments?: MatrixAttachment[];
   body?: string;
   content?: Record<string, unknown>;
   eventId: string;
