@@ -170,8 +170,8 @@ No backward compatibility is required. Prefer deleting old API shapes and duplic
 - [ ] Move all remaining non-standard Beeper APIs under `client.beeper`.
 - [ ] Add Beeper capability discovery beyond hostname where possible.
 - [x] Add Beeper login/signup flow as stateless request functions.
-- [ ] Add tests ensuring non-standard event/content keys remain namespaced.
-- [ ] Document Beeper-first behavior and standard Matrix fallback behavior.
+- [x] Add tests ensuring non-standard event/content keys remain namespaced.
+- [x] Document Beeper-first behavior and standard Matrix fallback behavior.
 
 ## Chat SDK Adapter
 
