@@ -1,17 +1,30 @@
 export { copyBytes } from "./bytes";
 export { createMatrixClient } from "./client";
+export { onInvite, onMessage, onRawEvent, onReaction } from "./helpers";
+export { createBeeperLogin } from "./beeper-login";
 export { createMatrixLogin } from "./login";
 export type {
+  BeeperEmailTokenOptions,
+  BeeperEmailTokenResult,
+  BeeperLogin,
+  BeeperLoginOptions,
+  BeeperRegisterOptions,
+  BeeperRegisterResult,
+} from "./beeper-login";
+export type {
   MatrixClient,
+  MatrixAccountData,
   MatrixBeeper,
-  MatrixEvents,
   MatrixMedia,
   MatrixMessages,
+  MatrixRaw,
+  MatrixReceipts,
   MatrixReactions,
   MatrixRooms,
   MatrixStreams,
   MatrixSync,
   MatrixTyping,
+  MatrixToDevice,
   MatrixUsers,
 } from "./client-types";
 export type {
@@ -22,6 +35,8 @@ export type {
 } from "./login";
 export type {
   ApplySyncResponseOptions,
+  AccountDataOptions,
+  AccountDataResult,
   BanUserOptions,
   CreateBeeperStreamOptions,
   CreateRoomOptions,
@@ -51,6 +66,7 @@ export type {
   MarkReadOptions,
   MatrixAttachment,
   MatrixBeeperStreamDescriptor,
+  MatrixAccount,
   MatrixBaseEvent,
   MatrixClientEvent,
   MatrixClientOptions,
@@ -70,6 +86,10 @@ export type {
   MatrixSession,
   MatrixStore,
   MatrixStream,
+  MatrixRawEventEnvelope,
+  MatrixSubscribeFilter,
+  MatrixSubscribeOptions,
+  MatrixSubscription,
   MatrixSyncStatusEvent,
   MatrixThreadSummary,
   MatrixWhoami,
@@ -83,6 +103,8 @@ export type {
   RegisterBeeperStreamOptions,
   ResolveRoomAliasOptions,
   ResolveRoomAliasResult,
+  RawRequestOptions,
+  RawRequestResult,
   RoomMember,
   RoomInfo,
   RoomPowerLevels,
@@ -93,12 +115,15 @@ export type {
   SendMatrixStreamOptions,
   SendMediaMessageOptions,
   SendMessageOptions,
+  SendReceiptOptions,
   SendRoomStateEventOptions,
+  SendToDeviceOptions,
+  SendToDeviceResult,
   SetOwnAvatarUrlOptions,
   SetOwnDisplayNameOptions,
+  SetAccountDataOptions,
+  SetRoomAccountDataOptions,
   SentEvent,
-  SyncOnceOptions,
-  SyncStartOptions,
   TypingOptions,
   UnbanUserOptions,
   UploadEncryptedMediaResult,

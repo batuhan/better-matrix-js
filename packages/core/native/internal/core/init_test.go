@@ -21,16 +21,19 @@ func TestResolveStartupSyncPlanDefaultsToLiveCursorForFreshLogin(t *testing.T) {
 	}
 }
 
-func TestResolveStartupSyncPlanCatchesUpFromPersistedCursorByDefault(t *testing.T) {
+func TestResolveStartupSyncPlanUsesPersistedCursorAsFutureOnlyByDefault(t *testing.T) {
 	plan := resolveStartupSyncPlan(MatrixCoreInitOptions{}, "s123")
-	if plan.skipNextSync {
-		t.Fatal("persisted cursor should catch up timeline events by default")
+	if !plan.skipNextSync {
+		t.Fatal("persisted cursor should not catch up timeline events by default")
 	}
 	if plan.nextBatch != "s123" {
 		t.Fatalf("expected stored cursor, got %q", plan.nextBatch)
 	}
-	if !plan.loadPendingDecryptions {
-		t.Fatal("catch-up startup should load pending decryptions")
+	if plan.loadPendingDecryptions {
+		t.Fatal("future-only startup should not load stale pending decryptions")
+	}
+	if plan.cursorSource != "stored_latest" {
+		t.Fatalf("expected stored_latest source, got %q", plan.cursorSource)
 	}
 }
 

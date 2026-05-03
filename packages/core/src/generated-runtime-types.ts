@@ -21,7 +21,7 @@ export interface MatrixCryptoStatus {
   hasRecoveryKey: boolean;
   keyBackupVersion?: string;
   pendingDecryptionCount: number /* int */;
-  state: "disabled" | "enabled" | "key_backup_unavailable" | "recovery_cache_unavailable" | "recovery_key_cached" | "recovery_key_loaded" | "recovery_restored" | "recovery_unverified";
+  state: "disabled" | "enabled" | "key_backup_updated" | "key_backup_unavailable" | "recovery_cache_unavailable" | "recovery_key_cached" | "recovery_key_loaded" | "recovery_restored" | "recovery_unverified";
   storeBacked: boolean;
   userId?: string;
 }
@@ -303,8 +303,61 @@ export interface MatrixUnbanUserOptions {
   roomId: string;
   userId: string;
 }
+export interface MatrixAccountDataResult {
+  content: { [key: string]: unknown};
+  raw: unknown;
+  type: string;
+}
+export interface MatrixGetAccountDataOptions {
+  eventType: string;
+}
+export interface MatrixSetAccountDataOptions {
+  content: { [key: string]: unknown};
+  eventType: string;
+}
+export interface MatrixGetRoomAccountDataOptions {
+  eventType: string;
+  roomId: string;
+}
+export interface MatrixSetRoomAccountDataOptions {
+  content: { [key: string]: unknown};
+  eventType: string;
+  roomId: string;
+}
+export interface MatrixSendToDeviceOptions {
+  content?: { [key: string]: unknown};
+  eventType: string;
+  messages?: { [key: string]: { [key: string]: { [key: string]: unknown}}};
+  transactionId?: string;
+  userId?: string;
+  deviceId?: string;
+}
+export interface MatrixSendToDeviceResult {
+  raw: unknown;
+}
+export interface MatrixSendReceiptOptions {
+  content?: { [key: string]: unknown};
+  eventId: string;
+  receiptType?: string;
+  roomId: string;
+  threadId?: string;
+}
+export interface MatrixRawRequestOptions {
+  body?: unknown;
+  headers?: { [key: string]: string};
+  method?: string;
+  path: string;
+  query?: { [key: string]: string};
+}
+export interface MatrixRawRequestResult {
+  body?: unknown;
+  raw?: unknown;
+  status: number /* int */;
+  headers?: { [key: string]: string};
+}
 export interface MatrixSyncOnceOptions {
   beeperStreaming?: boolean;
+  replayMissed?: boolean;
   timeoutMs?: number /* int */;
 }
 export interface MatrixSyncStartOptions {
@@ -374,6 +427,21 @@ export interface MatrixInviteEvent {
   inviter?: string;
   raw: unknown;
   roomId: string;
+}
+export interface MatrixSyncEvent {
+  class: "state" | "ephemeral" | "accountData" | "toDevice" | "membership" | "redaction" | "raw" | string;
+  content: { [key: string]: unknown};
+  decrypted?: boolean;
+  encrypted?: boolean;
+  eventId?: string;
+  nextBatch?: string;
+  originServerTs?: number /* int64 */;
+  raw: unknown;
+  roomId?: string;
+  section?: string;
+  sender?: string;
+  stateKey?: string;
+  type: string;
 }
 export interface MatrixRoomThreadSummary {
   lastReplyTs?: number /* int64 */;

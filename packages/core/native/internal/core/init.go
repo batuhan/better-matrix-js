@@ -147,7 +147,7 @@ func resolveStartupSyncPlan(req MatrixCoreInitOptions, storedNextBatch string) s
 
 	mode := req.InitialSyncMode
 	if mode == "" {
-		mode = "persisted"
+		mode = "latest"
 	}
 	if req.CatchUpOnStart != nil {
 		if *req.CatchUpOnStart {
@@ -173,18 +173,10 @@ func resolveStartupSyncPlan(req MatrixCoreInitOptions, storedNextBatch string) s
 			skipNextSync:           true,
 		}
 	default:
-		if storedNextBatch != "" {
-			return startupSyncPlan{
-				cursorSource:           "stored",
-				loadPendingDecryptions: true,
-				nextBatch:              storedNextBatch,
-				skipNextSync:           false,
-			}
-		}
 		return startupSyncPlan{
-			cursorSource:           "latest",
+			cursorSource:           cursorSource(storedNextBatch, "stored_latest", "latest"),
 			loadPendingDecryptions: false,
-			nextBatch:              "",
+			nextBatch:              storedNextBatch,
 			skipNextSync:           true,
 		}
 	}
@@ -238,6 +230,15 @@ func (c *Core) handleWhoami(ctx context.Context) ([]byte, error) {
 		c.deviceID = resp.DeviceID
 	}
 	return json.Marshal(MatrixWhoami{UserID: cli.UserID.String(), DeviceID: cli.DeviceID.String()})
+}
+
+func (c *Core) handleLogout(ctx context.Context) ([]byte, error) {
+	cli, err := c.requireClient()
+	if err != nil {
+		return nil, err
+	}
+	_, err = cli.Logout(ctx)
+	return c.emptyIfNil(err)
 }
 
 func (c *Core) setupCrypto(ctx context.Context, req MatrixCoreInitOptions) error {

@@ -11,7 +11,7 @@ npm install better-matrix-js
 Use the Node entrypoint and a durable store. File or SQLite storage is enough for a single-process bot; production deployments can provide any `MatrixStore` implementation.
 
 ```ts
-import { createMatrixClient } from "better-matrix-js/node";
+import { createMatrixClient, onMessage } from "better-matrix-js/node";
 import { createFileMatrixStore } from "@better-matrix-js/state-file";
 
 const client = createMatrixClient({
@@ -21,7 +21,7 @@ const client = createMatrixClient({
   recoveryKey: process.env.MATRIX_RECOVERY_KEY,
 });
 
-client.events.onMessage(async (event) => {
+await onMessage(client, undefined, async (event) => {
   if (event.sender.isMe) return;
   await client.messages.send({
     roomId: event.roomId,
@@ -29,9 +29,6 @@ client.events.onMessage(async (event) => {
     replyTo: event.eventId,
   });
 });
-
-await client.connect();
-await client.sync.start();
 ```
 
 Send directly through the explicit namespaces:
@@ -62,7 +59,7 @@ const client = createMatrixClient({
   wasmModule,
 });
 
-await client.connect();
+await client.boot();
 ```
 
 For sync, use `MatrixSyncDurableObject` from `@better-matrix-js/cloudflare` and forward the response into `client.sync.applyResponse({ response, since })`. See [`examples/cloudflare-worker`](https://github.com/batuhan/better-matrix-js/tree/main/examples/cloudflare-worker).
@@ -110,7 +107,7 @@ Pass any of `wasmModule`, `wasmBytes`, or `wasmUrl` to `createMatrixClient()`, p
 
 ## Live sync vs serverless applyResponse
 
-Use `client.sync.start()` when the same process can keep a long-lived `/sync` request open. In serverless runtimes, run `/sync` elsewhere and call `client.sync.applyResponse({ response, since })` for each response. Do not run both for the same account at the same time; only one component should advance a Matrix account cursor.
+Use `client.subscribe(filter, handler)` when the same process can keep a long-lived `/sync` request open. In serverless runtimes, run `/sync` elsewhere and call `client.sync.applyResponse({ response, since })` for each response. Do not run both for the same account at the same time; only one component should advance a Matrix account cursor.
 
 ## E2EE storage and keys
 
@@ -122,7 +119,7 @@ Recommended bot onboarding:
 2. Pick a stable high-entropy `pickleKey` and store it with the bot secret material.
 3. Pass a durable `store`, `userId`, `deviceId`, access token, and `pickleKey` on every boot.
 4. Pass `recoveryKey` when the bot must decrypt historical encrypted messages from key backup.
-5. Check `await client.crypto.status()` after `connect()` and alert on `keyBackupUnavailable`, `recoveryUnverified`, or a nonzero `pendingDecryptionCount`.
+5. Check `await client.crypto.status()` after `boot()` and alert on `keyBackupUnavailable`, `recoveryUnverified`, or a nonzero `pendingDecryptionCount`.
 
 If `pickleKey` is omitted, the runtime currently falls back to the access token for compatibility with one-off bots. Treat that as development-only. Production encrypted bots should always set `pickleKey` explicitly so token rotation does not make local crypto state unreadable.
 

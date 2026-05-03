@@ -50,7 +50,7 @@ For Node bots, use a durable Chat SDK state adapter and a durable Matrix store. 
 ### Raw Matrix core (no Chat SDK)
 
 ```ts
-import { createMatrixClient } from "better-matrix-js/node";
+import { createMatrixClient, onMessage } from "better-matrix-js/node";
 import { createFileMatrixStore } from "@better-matrix-js/state-file";
 
 const client = createMatrixClient({
@@ -60,7 +60,7 @@ const client = createMatrixClient({
   recoveryKey: process.env.MATRIX_RECOVERY_KEY,
 });
 
-client.events.onMessage(async (event) => {
+await onMessage(client, undefined, async (event) => {
   if (event.sender.isMe) return;
   await client.messages.send({
     roomId: event.roomId,
@@ -68,9 +68,6 @@ client.events.onMessage(async (event) => {
     replyTo: event.eventId,
   });
 });
-
-await client.connect();
-await client.sync.start();
 ```
 
 ### Cloudflare Worker
@@ -83,6 +80,16 @@ Use `MatrixSyncDurableObject` for live sync and feed each webhook body to `clien
 
 Use `@better-matrix-js/state-memory` for tests, `@better-matrix-js/state-file` or `@better-matrix-js/state-sqlite` in Node, `@better-matrix-js/state-indexeddb` in browsers, and `@better-matrix-js/cloudflare` for Durable Object or KV storage. For anything custom, wrap a simple getter/setter with `@better-matrix-js/state-simple`.
 
+Docker-backed storage smoke tests are available for service-style stores:
+
+```sh
+pnpm test:docker
+pnpm test:docker:down
+```
+
+The Redis smoke uses `@better-matrix-js/state-simple` against a real Redis container
+to prove the minimal Matrix store contract works with external server-side storage.
+
 Browser apps should load `matrix-core.wasm` with `wasmUrl`, `wasmBytes`, or a bundler-provided `wasmModule`, and should persist Matrix state in IndexedDB.
 
 ## Feature support matrix
@@ -92,7 +99,7 @@ Browser apps should load `matrix-core.wasm` with `wasmUrl`, `wasmBytes`, or a bu
 | Node bots | Supported via `better-matrix-js/node` and file, SQLite, or custom stores. |
 | Browser apps | Supported with explicit WASM loading and IndexedDB-backed state. |
 | Cloudflare Workers | Supported with Durable Object state and `MatrixSyncDurableObject`. |
-| Live `/sync` loop | Supported with `client.sync.start()` in long-lived runtimes. |
+| Live `/sync` loop | Supported with `client.subscribe(filter, handler)` in long-lived runtimes. |
 | Serverless sync | Supported by applying webhooked responses with `applyResponse`. |
 | E2EE | Supported when the crypto store, `pickleKey`, and optional `recoveryKey` are durable. |
 | Beeper ephemeral events | Supported only on Beeper homeservers. |

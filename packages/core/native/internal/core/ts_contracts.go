@@ -57,6 +57,13 @@ func optionalString(value string) *string {
 	return &value
 }
 
+func optionalBool(value bool) *bool {
+	if !value {
+		return nil
+	}
+	return &value
+}
+
 func stringValue(value *string) string {
 	if value == nil {
 		return ""
@@ -94,6 +101,22 @@ type MatrixInviteEvent struct {
 	Inviter *string `json:"inviter,omitempty"`
 	Raw     any     `json:"raw"`
 	RoomID  string  `json:"roomId"`
+}
+
+type MatrixSyncEvent struct {
+	Class          string         `json:"class" tstype:"\"state\" | \"ephemeral\" | \"accountData\" | \"toDevice\" | \"membership\" | \"redaction\" | \"raw\" | string"`
+	Content        map[string]any `json:"content"`
+	Decrypted      *bool          `json:"decrypted,omitempty"`
+	Encrypted      *bool          `json:"encrypted,omitempty"`
+	EventID        *string        `json:"eventId,omitempty"`
+	NextBatch      *string        `json:"nextBatch,omitempty"`
+	OriginServerTS *int64         `json:"originServerTs,omitempty"`
+	Raw            any            `json:"raw"`
+	RoomID         *string        `json:"roomId,omitempty"`
+	Section        string         `json:"section,omitempty"`
+	Sender         *string        `json:"sender,omitempty"`
+	StateKey       *string        `json:"stateKey,omitempty"`
+	Type           string         `json:"type"`
 }
 
 type MatrixRoomThreadSummary struct {

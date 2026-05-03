@@ -156,6 +156,7 @@ function makeCore(overrides: Partial<MatrixCore> = {}) {
     })
   );
   const listeners = new Set<(event: MatrixClientEvent) => void>();
+  const subscribeOptions: unknown[] = [];
   const client: MatrixClient = {
     beeper: {
       ephemeral: {
@@ -167,28 +168,12 @@ function makeCore(overrides: Partial<MatrixCore> = {}) {
         register: core.registerBeeperStream,
       },
     },
-    close: core.close,
-    connect: () =>
+    boot: () =>
       core.init({
         accessToken: "token",
         homeserverUrl: "https://matrix.beeper.com",
       }),
-    events: {
-      on: (next) => {
-        listeners.add(next);
-        return () => {
-          listeners.delete(next);
-        };
-      },
-      onMessage: (next) => {
-        listeners.add(next as (event: MatrixClientEvent) => void);
-        return () => undefined;
-      },
-      onReaction: (next) => {
-        listeners.add(next as (event: MatrixClientEvent) => void);
-        return () => undefined;
-      },
-    },
+    close: core.close,
     media: {
       download: async (options) => {
         const result = await core.downloadMedia(options);
@@ -278,11 +263,19 @@ function makeCore(overrides: Partial<MatrixCore> = {}) {
     streams: {
       send: sendStream,
     },
+    subscribe: async (_filter, next, options) => {
+      subscribeOptions.push(options);
+      listeners.add(next as (event: MatrixClientEvent) => void);
+      return {
+        catchUp: core.syncOnce,
+        done: Promise.resolve(),
+        stop: async () => {
+          listeners.delete(next as (event: MatrixClientEvent) => void);
+        },
+      };
+    },
     sync: {
       applyResponse: core.applySyncResponse,
-      once: core.syncOnce,
-      start: async () => undefined,
-      stop: async () => undefined,
     },
     typing: { set: core.setTyping },
     users: { get: core.getUser },
@@ -299,6 +292,7 @@ function makeCore(overrides: Partial<MatrixCore> = {}) {
       }
     },
     sendStream,
+    subscribeOptions,
   };
 }
 
@@ -373,10 +367,7 @@ describe("MatrixAdapter", () => {
 
     await adapter.initialize(makeChat());
 
-    expect(core.init).toHaveBeenCalledWith({
-      accessToken: "token",
-      homeserverUrl: "https://matrix.beeper.com",
-    });
+    expect(core.whoami).toHaveBeenCalledOnce();
   });
 
   it("connects the injected Matrix client", async () => {
@@ -384,16 +375,12 @@ describe("MatrixAdapter", () => {
     const adapter = new MatrixAdapter({
       token: "token",
       client,
-      deviceId: "DEVICE",
       homeserver: "https://matrix.example.com",
-      initialSync: "persisted",
-      since: "s123",
-      sync: { enabled: false },
-      userId: "@bot:example.com",
+      sync: { enabled: true },
     });
     await adapter.initialize(makeChat());
 
-    expect(core.init).toHaveBeenCalledOnce();
+    expect(core.whoami).toHaveBeenCalledOnce();
   });
 
   it("parses Matrix formatted HTML and m.mentions into Chat SDK messages", async () => {
@@ -402,7 +389,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.example.com",
-      sync: { enabled: false },
+      sync: { enabled: true },
     });
     await adapter.initialize(makeChat());
 
@@ -437,7 +424,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.example.com",
-      sync: { enabled: false },
+      sync: { enabled: true },
     });
     await adapter.initialize(makeChat());
 
@@ -586,7 +573,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.example.com",
-      sync: { enabled: false },
+      sync: { enabled: true },
     });
     await adapter.initialize(chat);
 
@@ -622,7 +609,7 @@ describe("MatrixAdapter", () => {
       client,
       homeserver: "https://matrix.example.com",
       inviteAutoJoin: { inviterAllowlist: ["@alice:example.com"] },
-      sync: { enabled: false },
+      sync: { enabled: true },
     });
     await adapter.initialize(makeChat());
 
@@ -651,7 +638,7 @@ describe("MatrixAdapter", () => {
       client,
         homeserver: "https://matrix.example.com",
         inviteAutoJoin: { inviterAllowlist: ["@alice:example.com"] },
-        sync: { enabled: false },
+        sync: { enabled: true },
       });
       await adapter.initialize(makeChat());
 
@@ -680,7 +667,7 @@ describe("MatrixAdapter", () => {
       commandPrefix: "/",
       client,
       homeserver: "https://matrix.example.com",
-      sync: { enabled: false },
+      sync: { enabled: true },
     });
     await adapter.initialize(chat);
 
@@ -711,6 +698,36 @@ describe("MatrixAdapter", () => {
     );
   });
 
+  it("uses a non-live subscription when sync is disabled", async () => {
+    const { client, emit, subscribeOptions } = makeCore();
+    const chat = makeChat();
+    const adapter = new MatrixAdapter({
+      token: "token",
+      client,
+      homeserver: "https://matrix.example.com",
+      sync: { enabled: false },
+    });
+    await adapter.initialize(chat);
+    expect(subscribeOptions).toEqual([{ live: false }]);
+
+    emit({
+      event: {
+        body: "live",
+        content: { body: "live", msgtype: "m.text" },
+        eventId: "$live",
+        isMe: false,
+        msgtype: "m.text",
+        raw: {},
+        roomId: "!room:example.com",
+        sender: "@alice:example.com",
+        type: "m.room.message",
+      },
+      type: "message",
+    });
+
+    expect(chat.processMessage).toHaveBeenCalledOnce();
+  });
+
   it("applies sync responses directly through the Matrix core", async () => {
     const { client, core } = makeCore();
     const adapter = new MatrixAdapter({
@@ -736,6 +753,55 @@ describe("MatrixAdapter", () => {
       },
       since: "prev",
     });
+  });
+
+  it("posts non-interactive cards as text fallback only", async () => {
+    const { client, core } = makeCore();
+    const adapter = new MatrixAdapter({
+      token: "token",
+      client,
+      homeserver: "https://matrix.example.com",
+      sync: { enabled: false },
+    });
+    await adapter.initialize(makeChat());
+
+    await adapter.postMessage(encodeMatrixChatThreadRef({ roomId: "!room:example.com" }), {
+      card: {
+        children: [{ content: "Body", type: "text" }],
+        title: "Status",
+        type: "card",
+      },
+    } as never);
+
+    expect(core.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      body: "Status\nBody",
+      roomId: "!room:example.com",
+    }));
+  });
+
+  it("throws clearly for unsupported interactive cards/actions", async () => {
+    const { client } = makeCore();
+    const adapter = new MatrixAdapter({
+      token: "token",
+      client,
+      homeserver: "https://matrix.example.com",
+      sync: { enabled: false },
+    });
+    await adapter.initialize(makeChat());
+
+    await expect(adapter.postMessage(encodeMatrixChatThreadRef({ roomId: "!room:example.com" }), {
+      card: {
+        children: [
+          {
+            children: [{ id: "approve", label: "Approve", type: "button" }],
+            type: "actions",
+          },
+        ],
+        title: "Approval",
+        type: "card",
+      },
+      fallbackText: "Approval requested",
+    } as never)).rejects.toThrow("interactive Chat SDK cards/actions");
   });
 
   it("delegates Beeper homeserver streams to the core stream API", async () => {

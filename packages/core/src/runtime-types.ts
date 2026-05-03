@@ -3,10 +3,12 @@ import type {
   MatrixMessageEvent,
   MatrixRawEvent,
   MatrixReactionEvent,
+  MatrixSyncEvent,
 } from "./generated-runtime-types";
 import type { MatrixCoreOperations } from "./generated-runtime-operations";
 
 export type {
+  MatrixAccountDataResult,
   MatrixApplySyncResponseOptions,
   MatrixBanUserOptions,
   MatrixBeeperStreamOptions,
@@ -33,6 +35,8 @@ export type {
   MatrixFetchRoomStateEventOptions,
   MatrixFetchRoomStateOptions,
   MatrixFetchRoomStateResult,
+  MatrixGetAccountDataOptions,
+  MatrixGetRoomAccountDataOptions,
   MatrixGetUserOptions,
   MatrixInviteEvent,
   MatrixInviteUserOptions,
@@ -56,6 +60,8 @@ export type {
   MatrixOwnDisplayNameResult,
   MatrixRawEvent,
   MatrixRawMessage,
+  MatrixRawRequestOptions,
+  MatrixRawRequestResult,
   MatrixReactionEvent,
   MatrixReactionOptions,
   MatrixRegisterBeeperStreamOptions,
@@ -70,10 +76,16 @@ export type {
   MatrixSendEphemeralEventOptions,
   MatrixSendMediaMessageOptions,
   MatrixSendMessageOptions,
+  MatrixSendReceiptOptions,
   MatrixSendRoomStateEventOptions,
+  MatrixSendToDeviceOptions,
+  MatrixSendToDeviceResult,
   MatrixSetOwnAvatarURLOptions,
   MatrixSetOwnDisplayNameOptions,
+  MatrixSetAccountDataOptions,
+  MatrixSetRoomAccountDataOptions,
   MatrixSyncOnceOptions,
+  MatrixSyncEvent,
   MatrixSyncStartOptions,
   MatrixTypingOptions,
   MatrixUnbanUserOptions,
@@ -88,6 +100,23 @@ export type MatrixCoreEvent =
   | { event: MatrixMessageEvent; type: "message" }
   | { event: MatrixReactionEvent; type: "reaction" }
   | { event: MatrixInviteEvent; type: "invite" }
+  | {
+      event: MatrixSyncEvent;
+      nextBatch?: string;
+      since?: string;
+      type:
+        | "account_data"
+        | "device_list"
+        | "ephemeral"
+        | "membership"
+        | "presence"
+        | "raw_event"
+        | "receipt"
+        | "redaction"
+        | "room_state"
+        | "typing"
+        | "to_device";
+    }
   | {
       event: {
         content?: Record<string, unknown>;
@@ -104,6 +133,7 @@ export type MatrixCoreEvent =
       keyId?: string;
       status:
         | "enabled"
+        | "key_backup_updated"
         | "key_backup_unavailable"
         | "recovery_cache_unavailable"
         | "recovery_key_cached"
@@ -123,7 +153,7 @@ export type MatrixCoreEvent =
       error?: string;
       failures?: number;
       nextRetryMs?: number;
-      status: "initialized" | "init_step" | "syncing" | "synced" | "retrying" | "stopped";
+      status: "initialized" | "init_step" | "syncing" | "synced" | "retrying" | "skipped" | "stopped";
       step?: string;
       type: "sync_status";
     };

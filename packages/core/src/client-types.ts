@@ -1,5 +1,7 @@
 import type {
   ApplySyncResponseOptions,
+  AccountDataOptions,
+  AccountDataResult,
   BanUserOptions,
   CreateBeeperStreamOptions,
   CreateRoomOptions,
@@ -29,8 +31,9 @@ import type {
   MarkReadOptions,
   MatrixClientEvent,
   MatrixCryptoStatus,
-  MatrixMessageEvent,
-  MatrixReactionEvent,
+  MatrixSubscribeFilter,
+  MatrixSubscribeOptions,
+  MatrixSubscription,
   MatrixWhoami,
   OpenDMOptions,
   OpenDMResult,
@@ -42,6 +45,8 @@ import type {
   RegisterBeeperStreamOptions,
   ResolveRoomAliasOptions,
   ResolveRoomAliasResult,
+  RawRequestOptions,
+  RawRequestResult,
   RoomInfo,
   RoomPowerLevels,
   RoomStateEvent,
@@ -49,12 +54,15 @@ import type {
   SendMatrixStreamOptions,
   SendMediaMessageOptions,
   SendMessageOptions,
+  SendReceiptOptions,
   SendRoomStateEventOptions,
+  SendToDeviceOptions,
+  SendToDeviceResult,
   SetOwnAvatarUrlOptions,
   SetOwnDisplayNameOptions,
+  SetAccountDataOptions,
+  SetRoomAccountDataOptions,
   SentEvent,
-  SyncOnceOptions,
-  SyncStartOptions,
   TypingOptions,
   UnbanUserOptions,
   UploadEncryptedMediaResult,
@@ -65,19 +73,47 @@ import type {
 
 export interface MatrixClient {
   beeper: MatrixBeeper;
+  accountData: MatrixAccountData;
+  boot(): Promise<MatrixWhoami>;
   close(): Promise<void>;
-  connect(options?: { signal?: AbortSignal }): Promise<MatrixWhoami>;
   crypto: MatrixCrypto;
-  events: MatrixEvents;
   media: MatrixMedia;
   messages: MatrixMessages;
   reactions: MatrixReactions;
+  raw: MatrixRaw;
+  receipts: MatrixReceipts;
   rooms: MatrixRooms;
   streams: MatrixStreams;
+  subscribe(
+    filter: MatrixSubscribeFilter,
+    handler: (event: MatrixClientEvent) => void | Promise<void>,
+    options?: MatrixSubscribeOptions
+  ): Promise<MatrixSubscription>;
   sync: MatrixSync;
   typing: MatrixTyping;
+  toDevice: MatrixToDevice;
   users: MatrixUsers;
+  logout(): Promise<void>;
   whoami(): Promise<MatrixWhoami>;
+}
+
+export interface MatrixRaw {
+  request(options: RawRequestOptions): Promise<RawRequestResult>;
+}
+
+export interface MatrixAccountData {
+  get(options: AccountDataOptions): Promise<AccountDataResult>;
+  getRoom(options: AccountDataOptions & { roomId: string }): Promise<AccountDataResult>;
+  set(options: SetAccountDataOptions): Promise<void>;
+  setRoom(options: SetRoomAccountDataOptions): Promise<void>;
+}
+
+export interface MatrixToDevice {
+  send(options: SendToDeviceOptions): Promise<SendToDeviceResult>;
+}
+
+export interface MatrixReceipts {
+  send(options: SendReceiptOptions): Promise<void>;
 }
 
 export interface MatrixBeeper {
@@ -97,12 +133,6 @@ export interface MatrixStreams {
 
 export interface MatrixCrypto {
   status(): Promise<MatrixCryptoStatus>;
-}
-
-export interface MatrixEvents {
-  on(listener: (event: MatrixClientEvent) => void): () => void;
-  onMessage(listener: (event: MatrixMessageEvent) => void): () => void;
-  onReaction(listener: (event: MatrixReactionEvent) => void): () => void;
 }
 
 export interface MatrixMessages {
@@ -165,7 +195,4 @@ export interface MatrixUsers {
 
 export interface MatrixSync {
   applyResponse(options: ApplySyncResponseOptions): Promise<void>;
-  once(options?: SyncOnceOptions): Promise<void>;
-  start(options?: SyncStartOptions): Promise<void>;
-  stop(): Promise<void>;
 }

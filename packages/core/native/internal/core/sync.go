@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/crypto"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -18,6 +19,7 @@ const (
 
 type MatrixSyncOnceOptions struct {
 	BeeperStreaming bool `json:"beeperStreaming,omitempty"`
+	ReplayMissed    bool `json:"replayMissed,omitempty"`
 	TimeoutMS       int  `json:"timeoutMs,omitempty"`
 }
 
@@ -42,7 +44,7 @@ func (c *Core) handleSyncOnce(ctx context.Context, payload []byte) ([]byte, erro
 	if req.TimeoutMS <= 0 {
 		req.TimeoutMS = defaultSyncTimeoutMS
 	}
-	if err := c.syncOnce(ctx, req.TimeoutMS, req.BeeperStreaming, true); err != nil {
+	if err := c.syncOnce(ctx, req.TimeoutMS, req.BeeperStreaming, true, req.ReplayMissed); err != nil {
 		return nil, err
 	}
 	return c.empty()
@@ -100,7 +102,7 @@ func (c *Core) runSyncLoop(ctx context.Context, done chan struct{}, req MatrixSy
 	failures := 0
 	for {
 		c.syncMu.Lock()
-		err := c.syncOnce(ctx, req.TimeoutMS, req.BeeperStreaming, false)
+		err := c.syncOnce(ctx, req.TimeoutMS, req.BeeperStreaming, false, false)
 		c.syncMu.Unlock()
 		if err == nil {
 			failures = 0
@@ -134,7 +136,13 @@ func (c *Core) runSyncLoop(ctx context.Context, done chan struct{}, req MatrixSy
 	}
 }
 
-func (c *Core) syncOnce(ctx context.Context, timeoutMS int, beeperStreaming bool, emitFailure bool) error {
+func (c *Core) syncOnce(
+	ctx context.Context,
+	timeoutMS int,
+	beeperStreaming bool,
+	emitFailure bool,
+	replayMissed bool,
+) error {
 	started := time.Now()
 
 	cli, err := c.requireClient()
@@ -142,7 +150,7 @@ func (c *Core) syncOnce(ctx context.Context, timeoutMS int, beeperStreaming bool
 		return err
 	}
 	filterID := liveSyncFilter
-	skipTimelines := c.skipNextSync
+	skipTimelines := c.skipNextSync && !replayMissed
 	if skipTimelines {
 		timeoutMS = 0
 		filterID = noHistorySyncFilter
@@ -218,6 +226,16 @@ func (c *Core) handleApplySyncResponse(ctx context.Context, payload []byte) ([]b
 	if err := json.Unmarshal(req.Response, &resp); err != nil {
 		return nil, err
 	}
+	if req.Since != "" && c.nextBatch != "" && req.Since != c.nextBatch {
+		c.emit(OutboundEvent{
+			"type":       "sync_status",
+			"status":     "skipped",
+			"since":      req.Since,
+			"nextBatch":  c.nextBatch,
+			"remoteNext": resp.NextBatch,
+		})
+		return c.empty()
+	}
 	if err := c.processSyncResponse(ctx, &resp, req.Since); err != nil {
 		return nil, err
 	}
@@ -236,6 +254,7 @@ func (c *Core) processSyncResponse(ctx context.Context, resp *mautrix.RespSync, 
 	if err != nil {
 		return err
 	}
+	c.processSyncMetadata(resp, since)
 	c.processInvites(resp)
 	c.processBeeperStreamSync(ctx, resp)
 	if cli.Syncer != nil {
@@ -250,6 +269,184 @@ func (c *Core) processSyncResponse(ctx context.Context, resp *mautrix.RespSync, 
 		}
 	}
 	return nil
+}
+
+func (c *Core) processSyncMetadata(resp *mautrix.RespSync, since string) {
+	if resp == nil {
+		return
+	}
+	for _, evt := range resp.AccountData.Events {
+		c.emitSyncEvent("account_data", "accountData", "", evt, since, resp.NextBatch)
+	}
+	for _, evt := range resp.Presence.Events {
+		c.emitSyncEvent("presence", "presence", "", evt, since, resp.NextBatch)
+	}
+	for _, evt := range resp.ToDevice.Events {
+		c.emitSyncEvent("to_device", "toDevice", "", evt, since, resp.NextBatch)
+	}
+	if len(resp.DeviceLists.Changed) > 0 || len(resp.DeviceLists.Left) > 0 {
+		c.emitDeviceListEvent(resp.DeviceLists, since, resp.NextBatch)
+	}
+	for roomID, room := range resp.Rooms.Invite {
+		for _, evt := range room.State.Events {
+			c.emitClassifiedRoomEvent("invite_state", roomID, evt, since, resp.NextBatch)
+		}
+	}
+	for roomID, room := range resp.Rooms.Knock {
+		for _, evt := range room.State.Events {
+			c.emitClassifiedRoomEvent("knock_state", roomID, evt, since, resp.NextBatch)
+		}
+	}
+	for roomID, room := range resp.Rooms.Join {
+		for _, evt := range room.State.Events {
+			c.emitClassifiedRoomEvent("room_state", roomID, evt, since, resp.NextBatch)
+		}
+		if room.StateAfter != nil {
+			for _, evt := range room.StateAfter.Events {
+				c.emitClassifiedRoomEvent("room_state_after", roomID, evt, since, resp.NextBatch)
+			}
+		}
+		for _, evt := range room.Timeline.Events {
+			c.emitSyncEvent("room_timeline", "raw", roomID, evt, since, resp.NextBatch)
+		}
+		for _, evt := range room.Ephemeral.Events {
+			class := "ephemeral"
+			if evt != nil {
+				switch evt.Type {
+				case event.EphemeralEventReceipt:
+					class = "receipt"
+				case event.EphemeralEventTyping:
+					class = "typing"
+				}
+			}
+			c.emitSyncEvent("room_ephemeral", class, roomID, evt, since, resp.NextBatch)
+		}
+		for _, evt := range room.AccountData.Events {
+			c.emitSyncEvent("room_account_data", "accountData", roomID, evt, since, resp.NextBatch)
+		}
+	}
+	for roomID, room := range resp.Rooms.Leave {
+		for _, evt := range room.State.Events {
+			c.emitClassifiedRoomEvent("left_room_state", roomID, evt, since, resp.NextBatch)
+		}
+		for _, evt := range room.Timeline.Events {
+			c.emitClassifiedRoomEvent("left_room_timeline", roomID, evt, since, resp.NextBatch)
+		}
+	}
+}
+
+func (c *Core) emitClassifiedRoomEvent(section string, roomID id.RoomID, evt *event.Event, since string, nextBatch string) {
+	class := "state"
+	if evt != nil {
+		switch evt.Type {
+		case event.StateMember:
+			class = "membership"
+		case event.EventRedaction:
+			class = "redaction"
+		}
+	}
+	c.emitSyncEvent(section, class, roomID, evt, since, nextBatch)
+}
+
+func (c *Core) emitSyncEvent(section string, class string, roomID id.RoomID, evt *event.Event, since string, nextBatch string) {
+	if evt == nil {
+		return
+	}
+	if roomID != "" && evt.RoomID == "" {
+		evt.RoomID = roomID
+	}
+	syncEvent := c.toMatrixSyncEvent(section, class, evt, nextBatch)
+	c.emit(OutboundEvent{
+		"type":      "raw_event",
+		"event":     syncEvent,
+		"since":     since,
+		"nextBatch": nextBatch,
+	})
+	switch class {
+	case "accountData":
+		c.emit(OutboundEvent{"type": "account_data", "event": syncEvent})
+	case "toDevice":
+		c.emit(OutboundEvent{"type": "to_device", "event": syncEvent})
+	case "receipt":
+		c.emit(OutboundEvent{"type": "receipt", "event": syncEvent})
+	case "typing":
+		c.emit(OutboundEvent{"type": "typing", "event": syncEvent})
+	case "presence":
+		c.emit(OutboundEvent{"type": "presence", "event": syncEvent})
+	case "ephemeral":
+		c.emit(OutboundEvent{"type": "ephemeral", "event": syncEvent})
+	case "membership":
+		c.emit(OutboundEvent{"type": "membership", "event": syncEvent})
+	case "redaction":
+		c.emit(OutboundEvent{"type": "redaction", "event": syncEvent})
+	case "state":
+		c.emit(OutboundEvent{"type": "room_state", "event": syncEvent})
+	}
+}
+
+func (c *Core) emitDeviceListEvent(lists mautrix.DeviceLists, since string, nextBatch string) {
+	changed := make([]string, 0, len(lists.Changed))
+	for _, userID := range lists.Changed {
+		changed = append(changed, userID.String())
+	}
+	left := make([]string, 0, len(lists.Left))
+	for _, userID := range lists.Left {
+		left = append(left, userID.String())
+	}
+	content := map[string]any{
+		"changed": changed,
+		"left":    left,
+	}
+	syncEvent := MatrixSyncEvent{
+		Class:     "deviceList",
+		Content:   content,
+		NextBatch: optionalString(nextBatch),
+		Raw:       lists,
+		Section:   "device_lists",
+		Type:      "m.device_list",
+	}
+	c.emit(OutboundEvent{
+		"type":      "raw_event",
+		"event":     syncEvent,
+		"since":     since,
+		"nextBatch": nextBatch,
+	})
+	c.emit(OutboundEvent{"type": "device_list", "event": syncEvent})
+}
+
+func (c *Core) toMatrixSyncEvent(section string, class string, evt *event.Event, nextBatch string) MatrixSyncEvent {
+	content := evt.Content.Raw
+	if content == nil && len(evt.Content.VeryRaw) > 0 {
+		_ = json.Unmarshal(evt.Content.VeryRaw, &content)
+	}
+	if content == nil {
+		content = map[string]any{}
+	}
+	eventID := optionalString(evt.ID.String())
+	roomID := optionalString(evt.RoomID.String())
+	sender := optionalString(evt.Sender.String())
+	stateKey := optionalString(evt.GetStateKey())
+	var originServerTS *int64
+	if evt.Timestamp != 0 {
+		originServerTS = &evt.Timestamp
+	}
+	encrypted := evt.Type == event.EventEncrypted
+	decrypted := encrypted && evt.Content.Raw["msgtype"] != nil
+	return MatrixSyncEvent{
+		Class:          class,
+		Content:        content,
+		Decrypted:      optionalBool(decrypted),
+		Encrypted:      optionalBool(encrypted),
+		EventID:        eventID,
+		NextBatch:      optionalString(nextBatch),
+		OriginServerTS: originServerTS,
+		Raw:            evt,
+		RoomID:         roomID,
+		Section:        section,
+		Sender:         sender,
+		StateKey:       stateKey,
+		Type:           evt.Type.Type,
+	}
 }
 
 func (c *Core) processBeeperStreamSync(ctx context.Context, resp *mautrix.RespSync) {
@@ -374,6 +571,10 @@ func (c *Core) convertMaybeEncryptedMessageEvent(ctx context.Context, evt *event
 	decrypted, err := c.decryptIfNeeded(ctx, evt)
 	if err != nil {
 		c.rememberPendingDecryption(ctx, evt)
+		if restored := c.restoreEventFromBackup(ctx, evt); restored != nil {
+			c.removePendingDecryption(ctx, evt.ID)
+			return c.convertMessageEvent(restored)
+		}
 		eventData := OutboundEvent{}
 		if evt != nil {
 			eventData["eventId"] = evt.ID.String()
@@ -392,6 +593,33 @@ func (c *Core) convertMaybeEncryptedMessageEvent(ctx context.Context, evt *event
 	}
 	c.removePendingDecryption(ctx, evt.ID)
 	return c.convertMessageEvent(decrypted)
+}
+
+func (c *Core) restoreEventFromBackup(ctx context.Context, evt *event.Event) *event.Event {
+	if evt == nil || evt.Type != event.EventEncrypted || c.crypto == nil || c.backupKey == nil {
+		return nil
+	}
+	_ = evt.Content.ParseRaw(evt.Type)
+	content := evt.Content.AsEncrypted()
+	minIndex, _ := crypto.ParseMegolmMessageIndex(content.MegolmCiphertext)
+	pending := &pendingDecryption{
+		AddedAt:   time.Now().UnixMilli(),
+		EventID:   evt.ID.String(),
+		MinIndex:  minIndex,
+		RoomID:    evt.RoomID.String(),
+		Sender:    evt.Sender.String(),
+		DeviceID:  content.DeviceID.String(),
+		SenderKey: content.SenderKey.String(),
+		SessionID: content.SessionID.String(),
+	}
+	if restored, _ := c.restorePendingFromBackup(ctx, pending); !restored {
+		return nil
+	}
+	decrypted, err := c.decryptIfNeeded(ctx, evt)
+	if err != nil {
+		return nil
+	}
+	return decrypted
 }
 
 func (c *Core) decryptIfNeeded(ctx context.Context, evt *event.Event) (*event.Event, error) {

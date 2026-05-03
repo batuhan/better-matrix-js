@@ -76,10 +76,26 @@ func (c *Core) Handle(ctx context.Context, op string, payload []byte) ([]byte, e
 		return c.handleInit(ctx, payload)
 	case opWhoami:
 		return c.handleWhoami(ctx)
+	case opLogout:
+		return c.handleLogout(ctx)
 	case opGetCryptoStatus:
 		return c.handleGetCryptoStatus()
+	case opRawRequest:
+		return c.handleRawRequest(ctx, payload)
 	case opApplySyncResponse:
 		return c.handleApplySyncResponse(ctx, payload)
+	case opGetAccountData:
+		return c.handleGetAccountData(ctx, payload)
+	case opSetAccountData:
+		return c.handleSetAccountData(ctx, payload)
+	case opGetRoomAccountData:
+		return c.handleGetRoomAccountData(ctx, payload)
+	case opSetRoomAccountData:
+		return c.handleSetRoomAccountData(ctx, payload)
+	case opSendToDevice:
+		return c.handleSendToDevice(ctx, payload)
+	case opSendReceipt:
+		return c.handleSendReceipt(ctx, payload)
 	case opPostMessage:
 		return c.handlePostMessage(ctx, payload)
 	case opPostMediaMessage:

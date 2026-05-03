@@ -10,19 +10,17 @@ export interface MatrixLogger {
 }
 
 export interface MatrixClientOptions {
+  account?: MatrixAccount;
   beeper?: boolean;
-  deviceId?: string;
+  boot?: boolean;
   fetch?: typeof fetch;
-  homeserver: string;
-  initialSync?: "persisted" | "latest" | "catchUp";
+  homeserver?: string;
   logger?: MatrixLogger;
   pickleKey?: string;
   randomBytes?: (length: number) => Uint8Array;
   recoveryKey?: string;
-  since?: string;
   store?: MatrixStore;
-  token: string;
-  userId?: string;
+  token?: string;
   verifyRecoveryOnStart?: boolean;
   wasmBytes?: BufferSource;
   wasmModule?: WebAssembly.Module;
@@ -68,12 +66,15 @@ export interface SendBeeperEphemeralOptions {
   transactionId?: string;
 }
 
-export interface MatrixSession {
+export interface MatrixAccount {
   accessToken: string;
   deviceId: string;
   homeserver: string;
+  metadata?: Record<string, unknown>;
   userId: string;
 }
+
+export type MatrixSession = MatrixAccount;
 
 export interface MatrixWhoami {
   deviceId: string;
@@ -175,13 +176,33 @@ export interface MatrixInviteEvent {
   roomId: string;
 }
 
+export interface MatrixGenericEvent extends MatrixBaseEvent {
+  decrypted?: boolean;
+  encrypted?: boolean;
+  kind:
+    | "accountData"
+    | "deviceList"
+    | "ephemeral"
+    | "membership"
+    | "presence"
+    | "raw"
+    | "receipt"
+    | "redaction"
+    | "roomState"
+    | "typing"
+      | "toDevice";
+  nextBatch?: string;
+  section?: string;
+  since?: string;
+}
+
 export interface MatrixSyncStatusEvent {
   durationMs?: number;
   error?: string;
   failures?: number;
   kind: "sync";
   nextRetryMs?: number;
-  state: "initialized" | "initStep" | "syncing" | "synced" | "retrying" | "stopped";
+  state: "initialized" | "initStep" | "syncing" | "synced" | "retrying" | "skipped" | "stopped";
   step?: string;
 }
 
@@ -192,6 +213,7 @@ export interface MatrixCryptoStatusEvent {
   kind: "crypto";
   state:
     | "enabled"
+    | "keyBackupUpdated"
     | "keyBackupUnavailable"
     | "recoveryCacheUnavailable"
     | "recoveryKeyCached"
@@ -208,6 +230,7 @@ export interface MatrixCryptoStatus {
   state:
     | "disabled"
     | "enabled"
+    | "keyBackupUpdated"
     | "keyBackupUnavailable"
     | "recoveryCacheUnavailable"
     | "recoveryKeyCached"
@@ -216,6 +239,64 @@ export interface MatrixCryptoStatus {
     | "recoveryUnverified";
   storeBacked: boolean;
   userId?: string;
+}
+
+export interface RawRequestOptions {
+  body?: unknown;
+  headers?: Record<string, string>;
+  method?: "DELETE" | "GET" | "PATCH" | "POST" | "PUT" | string;
+  path: string;
+  query?: Record<string, string>;
+}
+
+export interface RawRequestResult {
+  body?: unknown;
+  headers?: Record<string, string>;
+  raw?: unknown;
+  status: number;
+}
+
+export interface AccountDataResult {
+  content: Record<string, unknown>;
+  raw: unknown;
+  type: string;
+}
+
+export interface AccountDataOptions {
+  eventType: string;
+}
+
+export interface SetAccountDataOptions extends AccountDataOptions {
+  content: Record<string, unknown>;
+}
+
+export interface RoomAccountDataOptions extends AccountDataOptions {
+  roomId: string;
+}
+
+export interface SetRoomAccountDataOptions extends RoomAccountDataOptions {
+  content: Record<string, unknown>;
+}
+
+export interface SendToDeviceOptions {
+  content?: Record<string, unknown>;
+  deviceId?: string;
+  eventType: string;
+  messages?: Record<string, Record<string, Record<string, unknown>>>;
+  transactionId?: string;
+  userId?: string;
+}
+
+export interface SendToDeviceResult {
+  raw: unknown;
+}
+
+export interface SendReceiptOptions {
+  content?: Record<string, unknown>;
+  eventId: string;
+  receiptType?: "m.read" | "m.read.private" | "m.fully_read" | string;
+  roomId: string;
+  threadId?: string;
 }
 
 export interface MatrixDecryptionErrorEvent {
@@ -233,10 +314,45 @@ export type MatrixClientEvent =
   | MatrixMessageEvent
   | MatrixReactionEvent
   | MatrixInviteEvent
+  | MatrixGenericEvent
   | MatrixSyncStatusEvent
   | MatrixCryptoStatusEvent
   | MatrixDecryptionErrorEvent
   | MatrixErrorEvent;
+
+export type MatrixSubscribeFilter =
+  | {
+      kind?: MatrixClientEvent["kind"] | MatrixClientEvent["kind"][];
+      relationEventId?: string | string[];
+      roomId?: string | string[];
+      sender?: string | string[];
+      threadRoot?: string | string[];
+      type?: string | string[];
+    }
+  | undefined;
+
+export interface MatrixSubscribeOptions {
+  live?: boolean;
+  retryDelayMs?: number;
+  timeoutMs?: number;
+}
+
+export interface MatrixSubscription {
+  catchUp(): Promise<void>;
+  done: Promise<void>;
+  stop(): Promise<void>;
+}
+
+export interface MatrixRawEventEnvelope {
+  event: MatrixGenericEvent;
+  kind: "raw";
+  raw: unknown;
+  source: {
+    kind: MatrixClientEvent["kind"];
+    roomId?: string;
+    type?: string;
+  };
+}
 
 export interface SendMessageOptions {
   content?: Record<string, unknown>;
@@ -580,18 +696,6 @@ export interface MatrixThreadSummary {
 export interface ListThreadsResult {
   nextCursor?: string;
   threads: MatrixThreadSummary[];
-}
-
-export interface SyncStartOptions {
-  beeper?: boolean;
-  retryDelayMs?: number;
-  signal?: AbortSignal;
-  timeoutMs?: number;
-}
-
-export interface SyncOnceOptions {
-  beeper?: boolean;
-  timeoutMs?: number;
 }
 
 export interface ApplySyncResponseOptions {
