@@ -4,6 +4,7 @@ export interface MatrixLoginOptions {
   fetch?: typeof fetch;
   homeserver: string;
   initialDeviceDisplayName?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface MatrixPasswordLoginOptions {
@@ -25,7 +26,7 @@ export function createMatrixLogin(options: MatrixLoginOptions): MatrixLogin {
   const fetchImpl = options.fetch ?? fetch;
   return {
     password: (login) =>
-      matrixLoginRequest(fetchImpl, options.homeserver, {
+      matrixLoginRequest(fetchImpl, options.homeserver, options.metadata, {
         identifier: {
           type: "m.id.user",
           user: login.username,
@@ -35,7 +36,7 @@ export function createMatrixLogin(options: MatrixLoginOptions): MatrixLogin {
         type: "m.login.password",
       }),
     token: (login) =>
-      matrixLoginRequest(fetchImpl, options.homeserver, {
+      matrixLoginRequest(fetchImpl, options.homeserver, options.metadata, {
         initial_device_display_name: options.initialDeviceDisplayName ?? "Matrix",
         token: login.token,
         type: login.type ?? "m.login.token",
@@ -46,6 +47,7 @@ export function createMatrixLogin(options: MatrixLoginOptions): MatrixLogin {
 async function matrixLoginRequest(
   fetchImpl: typeof fetch,
   homeserver: string,
+  metadata: Record<string, unknown> | undefined,
   body: Record<string, unknown>
 ): Promise<MatrixSession> {
   const response = await fetchImpl(new URL("/_matrix/client/v3/login", homeserver), {
@@ -64,10 +66,14 @@ async function matrixLoginRequest(
     user_id: string;
   };
 
-  return {
+  const session: MatrixSession = {
     accessToken: data.access_token,
     deviceId: data.device_id,
     homeserver,
     userId: data.user_id,
   };
+  if (metadata !== undefined) {
+    session.metadata = { ...metadata };
+  }
+  return session;
 }

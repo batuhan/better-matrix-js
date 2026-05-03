@@ -43,6 +43,8 @@ const client = createMatrixClient({
 await client.whoami();
 ```
 
+`metadata` is carried through login results if provided, but it is never used as Matrix identity. Runtime identity is always `userId`, `deviceId`, `homeserver`, and `accessToken`.
+
 ## CLI Usage Without Sync
 
 Request-style programs can send/fetch and exit without subscribing:

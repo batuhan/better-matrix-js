@@ -12,12 +12,14 @@ describe("createMatrixLogin", () => {
       fetch: fetchImpl as typeof fetch,
       homeserver: "https://matrix.example.com",
       initialDeviceDisplayName: "Bot",
+      metadata: { label: "cached-beeper-bot" },
     });
 
     await expect(login.token({ token: "jwt", type: "org.matrix.login.jwt" })).resolves.toEqual({
       accessToken: "access",
       deviceId: "DEVICE",
       homeserver: "https://matrix.example.com",
+      metadata: { label: "cached-beeper-bot" },
       userId: "@bot:example.com",
     });
     expect(await requestBody(fetchImpl)).toEqual({

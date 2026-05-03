@@ -41,7 +41,7 @@ No backward compatibility is required. Prefer deleting old API shapes and duplic
 - [x] Remove public login option for caller-selected `deviceId`.
 - [x] Add logout helper.
 - [x] Add token/JWT login coverage for returned `MatrixAccount`.
-- [ ] Persist/use account metadata without making it required for runtime identity.
+- [x] Persist/use account metadata without making it required for runtime identity.
 - [ ] Add Beeper signup/login flow object under `client.beeper` or a Beeper login helper package.
 - [ ] Ensure no QA-specific secrets, OTP assumptions, or fixed Beeper test behavior ship in public code.
 
