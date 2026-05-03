@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/crypto"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -570,6 +571,10 @@ func (c *Core) convertMaybeEncryptedMessageEvent(ctx context.Context, evt *event
 	decrypted, err := c.decryptIfNeeded(ctx, evt)
 	if err != nil {
 		c.rememberPendingDecryption(ctx, evt)
+		if restored := c.restoreEventFromBackup(ctx, evt); restored != nil {
+			c.removePendingDecryption(ctx, evt.ID)
+			return c.convertMessageEvent(restored)
+		}
 		eventData := OutboundEvent{}
 		if evt != nil {
 			eventData["eventId"] = evt.ID.String()
@@ -588,6 +593,33 @@ func (c *Core) convertMaybeEncryptedMessageEvent(ctx context.Context, evt *event
 	}
 	c.removePendingDecryption(ctx, evt.ID)
 	return c.convertMessageEvent(decrypted)
+}
+
+func (c *Core) restoreEventFromBackup(ctx context.Context, evt *event.Event) *event.Event {
+	if evt == nil || evt.Type != event.EventEncrypted || c.crypto == nil || c.backupKey == nil {
+		return nil
+	}
+	_ = evt.Content.ParseRaw(evt.Type)
+	content := evt.Content.AsEncrypted()
+	minIndex, _ := crypto.ParseMegolmMessageIndex(content.MegolmCiphertext)
+	pending := &pendingDecryption{
+		AddedAt:   time.Now().UnixMilli(),
+		EventID:   evt.ID.String(),
+		MinIndex:  minIndex,
+		RoomID:    evt.RoomID.String(),
+		Sender:    evt.Sender.String(),
+		DeviceID:  content.DeviceID.String(),
+		SenderKey: content.SenderKey.String(),
+		SessionID: content.SessionID.String(),
+	}
+	if restored, _ := c.restorePendingFromBackup(ctx, pending); !restored {
+		return nil
+	}
+	decrypted, err := c.decryptIfNeeded(ctx, evt)
+	if err != nil {
+		return nil
+	}
+	return decrypted
 }
 
 func (c *Core) decryptIfNeeded(ctx context.Context, evt *event.Event) (*event.Event, error) {
