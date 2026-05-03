@@ -152,7 +152,7 @@ export type MatrixCoreEvent =
       error?: string;
       failures?: number;
       nextRetryMs?: number;
-      status: "initialized" | "init_step" | "syncing" | "synced" | "retrying" | "stopped";
+      status: "initialized" | "init_step" | "syncing" | "synced" | "retrying" | "skipped" | "stopped";
       step?: string;
       type: "sync_status";
     };

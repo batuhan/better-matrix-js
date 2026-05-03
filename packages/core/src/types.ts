@@ -202,7 +202,7 @@ export interface MatrixSyncStatusEvent {
   failures?: number;
   kind: "sync";
   nextRetryMs?: number;
-  state: "initialized" | "initStep" | "syncing" | "synced" | "retrying" | "stopped";
+  state: "initialized" | "initStep" | "syncing" | "synced" | "retrying" | "skipped" | "stopped";
   step?: string;
 }
 

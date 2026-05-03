@@ -225,6 +225,16 @@ func (c *Core) handleApplySyncResponse(ctx context.Context, payload []byte) ([]b
 	if err := json.Unmarshal(req.Response, &resp); err != nil {
 		return nil, err
 	}
+	if req.Since != "" && c.nextBatch != "" && req.Since != c.nextBatch {
+		c.emit(OutboundEvent{
+			"type":       "sync_status",
+			"status":     "skipped",
+			"since":      req.Since,
+			"nextBatch":  c.nextBatch,
+			"remoteNext": resp.NextBatch,
+		})
+		return c.empty()
+	}
 	if err := c.processSyncResponse(ctx, &resp, req.Since); err != nil {
 		return nil, err
 	}

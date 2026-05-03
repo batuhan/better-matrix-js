@@ -133,6 +133,7 @@ function toSyncEvent(event: Extract<MatrixCoreEvent, { type: "sync_status" }>): 
     init_step: "initStep",
     initialized: "initialized",
     retrying: "retrying",
+    skipped: "skipped",
     stopped: "stopped",
     synced: "synced",
     syncing: "syncing",

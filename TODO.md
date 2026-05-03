@@ -201,7 +201,7 @@ No backward compatibility is required. Prefer deleting old API shapes and duplic
 - [x] `client.sync.applyResponse({ response, since })` accepts externally supplied raw `/sync`.
 - [x] Serverless encrypted sync payload decryption is intentionally outside core sync API.
 - [x] Add optional stateless helper in adapter or companion package for encrypted webhook payloads.
-- [ ] Add replay/idempotency tests for serverless apply.
+- [x] Add replay/idempotency tests for serverless apply.
 - [ ] Add encrypted-room `applyResponse` fixture test with matching crypto store.
 - [x] Document cursor ownership in live, webhook, and Durable Object modes.
 - [x] Document how to avoid concurrent writers for encrypted devices.

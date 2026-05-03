@@ -90,6 +90,47 @@ func TestProcessSyncResponseEmitsGenericAndRawEvents(t *testing.T) {
 	}
 }
 
+func TestApplySyncResponseSkipsStaleWebhookReplay(t *testing.T) {
+	var emitted []OutboundEvent
+	core := New(func(evt OutboundEvent) {
+		emitted = append(emitted, evt)
+	})
+	core.client, _ = mautrix.NewClient("https://example.com", id.UserID("@alice:example"), "token")
+	core.nextBatch = "s124"
+
+	_, err := core.handleApplySyncResponse(context.Background(), []byte(`{
+		"since":"s123",
+		"response":{
+			"next_batch":"s124",
+			"rooms":{
+				"join":{
+					"!room:example":{
+						"timeline":{
+							"events":[{
+								"content":{"body":"hello","msgtype":"m.text"},
+								"event_id":"$message",
+								"sender":"@alice:example",
+								"type":"m.room.message"
+							}]
+						}
+					}
+				}
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, evt := range emitted {
+		if evt["type"] == "message" || evt["type"] == "raw_event" {
+			t.Fatalf("stale apply should not replay events, got %#v", emitted)
+		}
+	}
+	if len(emitted) != 1 || emitted[0]["status"] != "skipped" {
+		t.Fatalf("expected skipped status, got %#v", emitted)
+	}
+}
+
 func syncTestEvent(eventType event.Type, content map[string]any) *event.Event {
 	raw, _ := json.Marshal(content)
 	return &event.Event{
