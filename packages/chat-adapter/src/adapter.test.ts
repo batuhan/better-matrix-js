@@ -156,6 +156,7 @@ function makeCore(overrides: Partial<MatrixCore> = {}) {
     })
   );
   const listeners = new Set<(event: MatrixClientEvent) => void>();
+  const subscribeOptions: unknown[] = [];
   const client: MatrixClient = {
     beeper: {
       ephemeral: {
@@ -262,7 +263,8 @@ function makeCore(overrides: Partial<MatrixCore> = {}) {
     streams: {
       send: sendStream,
     },
-    subscribe: async (_filter, next) => {
+    subscribe: async (_filter, next, options) => {
+      subscribeOptions.push(options);
       listeners.add(next as (event: MatrixClientEvent) => void);
       return {
         catchUp: core.syncOnce,
@@ -290,6 +292,7 @@ function makeCore(overrides: Partial<MatrixCore> = {}) {
       }
     },
     sendStream,
+    subscribeOptions,
   };
 }
 
@@ -695,8 +698,8 @@ describe("MatrixAdapter", () => {
     );
   });
 
-  it("does not subscribe or dispatch live events when sync is disabled", async () => {
-    const { client, emit } = makeCore();
+  it("uses a non-live subscription when sync is disabled", async () => {
+    const { client, emit, subscribeOptions } = makeCore();
     const chat = makeChat();
     const adapter = new MatrixAdapter({
       token: "token",
@@ -705,6 +708,7 @@ describe("MatrixAdapter", () => {
       sync: { enabled: false },
     });
     await adapter.initialize(chat);
+    expect(subscribeOptions).toEqual([{ live: false }]);
 
     emit({
       event: {
@@ -721,7 +725,7 @@ describe("MatrixAdapter", () => {
       type: "message",
     });
 
-    expect(chat.processMessage).not.toHaveBeenCalled();
+    expect(chat.processMessage).toHaveBeenCalledOnce();
   });
 
   it("applies sync responses directly through the Matrix core", async () => {

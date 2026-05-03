@@ -330,6 +330,7 @@ export type MatrixSubscribeFilter =
   | undefined;
 
 export interface MatrixSubscribeOptions {
+  live?: boolean;
   retryDelayMs?: number;
   timeoutMs?: number;
 }

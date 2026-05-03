@@ -472,6 +472,45 @@ describe("createMatrixClient", () => {
     });
   });
 
+  it("can subscribe to externally applied sync without starting live sync", async () => {
+    const calls = installRuntime({
+      apply_sync_response: {},
+      init: { deviceId: "DEVICE", userId: "@bot:example.com" },
+      stop_sync: {},
+    });
+    const client = createMatrixClient({
+      homeserver: "https://matrix.example.com",
+      token: "token",
+      wasmModule: {} as WebAssembly.Module,
+    });
+    const listener = vi.fn();
+
+    const sub = await client.subscribe({}, listener, { live: false });
+    await client.sync.applyResponse({ response: { next_batch: "s1" } });
+    globalThis.__matrixCoreEmit?.(
+      "core-1",
+      JSON.stringify({
+        event: {
+          body: "Webhook",
+          content: { body: "Webhook", msgtype: "m.text" },
+          eventId: "$webhook",
+          raw: {},
+          roomId: "!room:example.com",
+          sender: "@alice:example.com",
+          type: "m.room.message",
+        },
+        type: "message",
+      })
+    );
+    await sub.stop();
+
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: "$webhook",
+      kind: "message",
+    }));
+    expect(calls.map((call) => call.operation)).toEqual(["init", "apply_sync_response", "stop_sync"]);
+  });
+
   it("delivers catchUp events only to the calling subscription", async () => {
     const calls = installRuntime({
       init: { deviceId: "DEVICE", userId: "@bot:example.com" },

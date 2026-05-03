@@ -281,7 +281,9 @@ class DefaultMatrixClient implements MatrixClient {
       }
     });
     this.#subscriptions.add(subscription);
-    await this.#startSync(core, options);
+    if (options.live !== false) {
+      await this.#startSync(core, options);
+    }
     return {
       catchUp: () => this.#catchUp(subscription),
       done: subscription.done,

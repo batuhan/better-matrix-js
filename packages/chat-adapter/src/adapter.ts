@@ -143,9 +143,11 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixMessage
     this.#userId = whoami.userId;
     this.botUserId = whoami.userId;
 
-    if (this.#config.sync?.enabled !== false) {
-      this.#subscription = await this.#client.subscribe({}, (event) => this.#handleClientEvent(event));
-    }
+    this.#subscription = await this.#client.subscribe(
+      {},
+      (event) => this.#handleClientEvent(event),
+      { live: this.#config.sync?.enabled !== false }
+    );
   }
 
   async disconnect(): Promise<void> {
