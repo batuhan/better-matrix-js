@@ -74,13 +74,13 @@ No backward compatibility is required. Prefer deleting old API shapes and duplic
   - [x] to-device events
   - [x] device list changes
   - [x] presence events if supported
-- [ ] Raw events must include unmodified Matrix payload and source metadata:
+- [x] Raw events must include unmodified Matrix payload and source metadata:
   - [x] sync cursor `since`
   - [x] next batch when available
   - [x] room id if applicable
   - [x] event class/source section
   - [x] event type
-  - [ ] encrypted/decrypted status where applicable
+  - [x] encrypted/decrypted status where applicable
 - [x] Ensure raw event delivery shares the same subscription runner and filter path.
 - [x] Add unit tests for raw event filtering and metadata.
 - [ ] Add e2e coverage for raw encrypted timeline events.

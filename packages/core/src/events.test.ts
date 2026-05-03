@@ -23,6 +23,8 @@ describe("toClientEvent", () => {
         event: {
           class: kind,
           content: { ok: true },
+          decrypted: true,
+          encrypted: true,
           eventId: "$event",
           nextBatch: "s2",
           originServerTs: 1,
@@ -40,6 +42,8 @@ describe("toClientEvent", () => {
 
       expect(mapped).toMatchObject({
         content: { ok: true },
+        decrypted: true,
+        encrypted: true,
         eventId: "$event",
         kind,
         nextBatch: "s2",

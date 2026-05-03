@@ -419,9 +419,13 @@ func (c *Core) toMatrixSyncEvent(section string, class string, evt *event.Event,
 	if evt.Timestamp != 0 {
 		originServerTS = &evt.Timestamp
 	}
+	encrypted := evt.Type == event.EventEncrypted
+	decrypted := encrypted && evt.Content.Raw["msgtype"] != nil
 	return MatrixSyncEvent{
 		Class:          class,
 		Content:        content,
+		Decrypted:      optionalBool(decrypted),
+		Encrypted:      optionalBool(encrypted),
 		EventID:        eventID,
 		NextBatch:      optionalString(nextBatch),
 		OriginServerTS: originServerTS,

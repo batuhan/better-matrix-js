@@ -177,6 +177,8 @@ export interface MatrixInviteEvent {
 }
 
 export interface MatrixGenericEvent extends MatrixBaseEvent {
+  decrypted?: boolean;
+  encrypted?: boolean;
   kind:
     | "accountData"
     | "deviceList"

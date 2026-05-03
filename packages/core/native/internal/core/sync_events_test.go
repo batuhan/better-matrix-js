@@ -42,11 +42,11 @@ func TestProcessSyncResponseEmitsGenericAndRawEvents(t *testing.T) {
 				}}},
 				Timeline: mautrix.SyncTimeline{
 					SyncEventsList: mautrix.SyncEventsList{Events: []*event.Event{{
-						Content: event.Content{Raw: map[string]any{"body": "hello", "msgtype": "m.text"}},
+						Content: event.Content{Raw: map[string]any{"algorithm": "m.megolm.v1.aes-sha2", "ciphertext": "cipher"}},
 						ID:      id.EventID("$message"),
 						RoomID:  id.RoomID("!room:example"),
 						Sender:  id.UserID("@alice:example"),
-						Type:    event.EventMessage,
+						Type:    event.EventEncrypted,
 					}}},
 				},
 			},
@@ -79,6 +79,9 @@ func TestProcessSyncResponseEmitsGenericAndRawEvents(t *testing.T) {
 		}
 		if syncEvent.NextBatch == nil || *syncEvent.NextBatch != "s124" {
 			t.Fatalf("expected next batch on timeline raw event, got %#v", syncEvent.NextBatch)
+		}
+		if syncEvent.Encrypted == nil || !*syncEvent.Encrypted {
+			t.Fatalf("expected encrypted raw timeline status, got %#v", syncEvent.Encrypted)
 		}
 		foundTimelineRaw = true
 	}

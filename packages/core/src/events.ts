@@ -54,6 +54,8 @@ function toGenericEvent(
   return stripUndefined({
     class: event.class === "raw" ? "unknown" : event.class,
     content: event.content,
+    decrypted: event.decrypted,
+    encrypted: event.encrypted,
     eventId: event.eventId,
     kind,
     nextBatch: event.nextBatch ?? nextBatch,

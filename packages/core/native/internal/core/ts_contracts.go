@@ -57,6 +57,13 @@ func optionalString(value string) *string {
 	return &value
 }
 
+func optionalBool(value bool) *bool {
+	if !value {
+		return nil
+	}
+	return &value
+}
+
 func stringValue(value *string) string {
 	if value == nil {
 		return ""
@@ -99,6 +106,8 @@ type MatrixInviteEvent struct {
 type MatrixSyncEvent struct {
 	Class          string         `json:"class" tstype:"\"state\" | \"ephemeral\" | \"accountData\" | \"toDevice\" | \"membership\" | \"redaction\" | \"raw\" | string"`
 	Content        map[string]any `json:"content"`
+	Decrypted      *bool          `json:"decrypted,omitempty"`
+	Encrypted      *bool          `json:"encrypted,omitempty"`
 	EventID        *string        `json:"eventId,omitempty"`
 	NextBatch      *string        `json:"nextBatch,omitempty"`
 	OriginServerTS *int64         `json:"originServerTs,omitempty"`
