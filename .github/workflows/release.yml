@@ -1,18 +1,28 @@
 name: Release
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  publish:
-    name: Publish npm packages
+  release:
+    name: Version and publish
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       id-token: write
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -22,23 +32,26 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
           cache: pnpm
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: packages/core/native/go.mod
-          cache-dependency-path: packages/core/native/go.sum
+          go-version-file: packages/pickle/native/go.mod
+          cache-dependency-path: packages/pickle/native/go.sum
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check
-        run: pnpm check
-
-      - name: Publish
-        run: pnpm publish:packages
+      - name: Create release PR or publish
+        uses: changesets/action@v1
+        with:
+          title: Release packages
+          commit: Release packages
+          version: pnpm version-packages
+          publish: pnpm release
+          createGithubReleases: true
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
