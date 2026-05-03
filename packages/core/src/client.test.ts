@@ -306,6 +306,25 @@ describe("createMatrixClient", () => {
     await sub.stop();
   });
 
+  it("rejects subscription done when the core emits an unrecoverable error", async () => {
+    installRuntime({
+      init: { deviceId: "DEVICE", userId: "@bot:example.com" },
+      start_sync: {},
+      stop_sync: {},
+    });
+    const client = createMatrixClient({
+      homeserver: "https://matrix.example.com",
+      token: "token",
+      wasmModule: {} as WebAssembly.Module,
+    });
+    const sub = await client.subscribe({}, () => undefined);
+
+    globalThis.__matrixCoreEmit?.("core-1", JSON.stringify({ error: "sync died", type: "error" }));
+
+    await expect(sub.done).rejects.toThrow("sync died");
+    await sub.stop();
+  });
+
   it("delegates subscription lifetime to the runtime", async () => {
     const calls = installRuntime({
       init: { deviceId: "DEVICE", userId: "@bot:example.com" },
@@ -325,6 +344,99 @@ describe("createMatrixClient", () => {
     expect(calls.map((call) => call.operation)).toEqual(["init", "start_sync", "sync_once", "stop_sync"]);
     expect(calls[1]?.payload).toEqual({});
     expect(calls[2]?.payload).toEqual({ replayMissed: true });
+  });
+
+  it("delivers catchUp events only to the calling subscription", async () => {
+    const calls = installRuntime({
+      init: { deviceId: "DEVICE", userId: "@bot:example.com" },
+      start_sync: {},
+      stop_sync: {},
+      sync_once: async () => {
+        globalThis.__matrixCoreEmit?.(
+          "core-1",
+          JSON.stringify({
+            event: {
+              body: "Missed",
+              content: { body: "Missed", msgtype: "m.text" },
+              eventId: "$missed",
+              msgtype: "m.text",
+              raw: {},
+              roomId: "!room:example.com",
+              sender: "@alice:example.com",
+              type: "m.room.message",
+            },
+            type: "message",
+          })
+        );
+        return {};
+      },
+    });
+    const client = createMatrixClient({
+      homeserver: "https://matrix.example.com",
+      token: "token",
+      wasmModule: {} as WebAssembly.Module,
+    });
+    const first = vi.fn();
+    const second = vi.fn();
+    const firstSub = await client.subscribe({ kind: "message" }, first);
+    const secondSub = await client.subscribe({ kind: "message" }, second);
+
+    await firstSub.catchUp();
+
+    expect(calls.map((call) => call.operation)).toEqual(["init", "start_sync", "sync_once"]);
+    expect(first).toHaveBeenCalledWith(expect.objectContaining({ eventId: "$missed" }));
+    expect(second).not.toHaveBeenCalled();
+    await firstSub.stop();
+    await secondSub.stop();
+  });
+
+  it("filters events by sender, relation, and thread", async () => {
+    installRuntime({
+      init: { deviceId: "DEVICE", userId: "@bot:example.com" },
+      start_sync: {},
+      stop_sync: {},
+    });
+    const client = createMatrixClient({
+      homeserver: "https://matrix.example.com",
+      token: "token",
+      wasmModule: {} as WebAssembly.Module,
+    });
+    const listener = vi.fn();
+    const sub = await client.subscribe({
+      kind: "message",
+      relationEventId: "$thread",
+      sender: "@alice:example.com",
+      threadRoot: "$thread",
+    }, listener);
+
+    for (const [eventId, sender, threadRoot] of [
+      ["$wrong-sender", "@bob:example.com", "$thread"],
+      ["$wrong-thread", "@alice:example.com", "$other"],
+      ["$match", "@alice:example.com", "$thread"],
+    ]) {
+      globalThis.__matrixCoreEmit?.(
+        "core-1",
+        JSON.stringify({
+          event: {
+            body: "Hello",
+            content: { body: "Hello", msgtype: "m.text" },
+            eventId,
+            msgtype: "m.text",
+            raw: {},
+            relation: { eventId: threadRoot, type: "m.thread" },
+            roomId: "!room:example.com",
+            sender,
+            threadRootEventId: threadRoot,
+            type: "m.room.message",
+          },
+          type: "message",
+        })
+      );
+    }
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({ eventId: "$match" }));
+    await sub.stop();
   });
 
   it("maps account data, to-device, receipts, and raw requests to core operations", async () => {
@@ -616,12 +728,13 @@ async function* chunks(
   }
 }
 
-function installRuntime(responses: Record<string, unknown>): RuntimeCall[] {
+function installRuntime(responses: Record<string, unknown | (() => unknown | Promise<unknown>)>): RuntimeCall[] {
   const calls: RuntimeCall[] = [];
   globalThis.__matrixCoreCreate = () => "core-1";
   globalThis.__matrixCoreCall = async (coreId, operation, payload) => {
     calls.push({ coreId, operation, payload: JSON.parse(payload) as Record<string, unknown> });
-    return JSON.stringify(responses[operation] ?? {});
+    const response = responses[operation];
+    return JSON.stringify(typeof response === "function" ? await response() : response ?? {});
   };
   return calls;
 }

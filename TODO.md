@@ -51,14 +51,14 @@ No backward compatibility is required. Prefer deleting old API shapes and duplic
 - [x] Reused accounts do not replay backlog unless `catchUp()` is called.
 - [x] Explicit pagination reads history independently of subscription delivery.
 - [x] Stopping the last subscription stops the internal sync runner.
-- [ ] Make `sub.done` reject on unrecoverable sync loop errors from Go, not only subscription handler errors.
+- [x] Make `sub.done` reject on unrecoverable sync loop errors from Go, not only subscription handler errors.
 - [ ] Add subscription options for runtime sync tuning if needed without exposing `sync.start`.
 - [x] Add tests for multiple subscribers sharing one sync runner.
 - [x] Add tests for stopping one subscriber while another remains active.
 - [x] Add tests for handler failures and `done` rejection behavior.
 - [ ] Add tests that `boot()` does not emit app events.
 - [ ] Add tests that default subscription is future-only with a reused stored cursor.
-- [ ] Add tests that `catchUp()` emits missed events and only through that subscription.
+- [x] Add tests that `catchUp()` emits missed events and only through that subscription.
 
 ## Raw Event Access
 
@@ -103,7 +103,7 @@ No backward compatibility is required. Prefer deleting old API shapes and duplic
 - [ ] Typing events as first-class normalized events.
 - [ ] Room summary/update events if needed for client UIs.
 - [ ] Decryption lifecycle events for pending, retried, failed, and recovered decryptions.
-- [ ] Make event filter matching work consistently across `kind`, `roomId`, `type`, sender, relation, and thread root where available.
+- [x] Make event filter matching work consistently across `kind`, `roomId`, `type`, sender, relation, and thread root where available.
 - [ ] Add unit tests for every normalized event mapper.
 - [ ] Add Go tests for every event emitted from `/sync`.
 

@@ -57,6 +57,7 @@ class DefaultMatrixClient implements MatrixClient {
   #syncReject: ((error: unknown) => void) | null = null;
   #syncResolve: (() => void) | null = null;
   #subscriptions = new Set<InternalSubscription>();
+  #catchUpTarget: InternalSubscription | null = null;
   #unsubscribeCore: (() => void) | null = null;
 
   constructor(options: MatrixClientOptions) {
@@ -351,6 +352,7 @@ class DefaultMatrixClient implements MatrixClient {
       this.#syncResolve = resolve;
       this.#syncReject = reject;
     });
+    this.#syncDone.catch(() => undefined);
     try {
       await core.startSync(stripUndefined({
         beeperStreaming: this.#options.beeper,
@@ -381,10 +383,15 @@ class DefaultMatrixClient implements MatrixClient {
   async #catchUp(subscription: InternalSubscription): Promise<void> {
     const core = await this.#coreReady();
     if (!this.#subscriptions.has(subscription)) return;
-    await core.syncOnce(stripUndefined({
-      beeperStreaming: this.#options.beeper,
-      replayMissed: true,
-    }));
+    this.#catchUpTarget = subscription;
+    try {
+      await core.syncOnce(stripUndefined({
+        beeperStreaming: this.#options.beeper,
+        replayMissed: true,
+      }));
+    } finally {
+      this.#catchUpTarget = null;
+    }
   }
 
   #clearSyncDone(): void {
@@ -396,6 +403,17 @@ class DefaultMatrixClient implements MatrixClient {
   #emit(event: MatrixCoreEvent): void {
     const mapped = toClientEvent(event);
     if (!mapped) return;
+    if (mapped.kind === "error") {
+      for (const subscription of this.#subscriptions) {
+        subscription.fail(new Error(mapped.error));
+      }
+      this.#syncReject?.(new Error(mapped.error));
+      return;
+    }
+    if (this.#catchUpTarget) {
+      this.#catchUpTarget.emit(mapped);
+      return;
+    }
     for (const subscription of this.#subscriptions) {
       subscription.emit(mapped);
     }
@@ -416,6 +434,7 @@ interface InternalSubscription {
   close(): void;
   done: Promise<void>;
   emit(event: MatrixClientEvent): void;
+  fail(error: unknown): void;
   stop(): Promise<void>;
 }
 
@@ -447,6 +466,7 @@ function createSubscription(
         rejectDone(error);
       }
     },
+    fail: (error) => rejectDone(error),
     stop: async () => {
       if (stopped) return;
       stopped = true;
@@ -460,13 +480,33 @@ function matchesFilter(filter: MatrixSubscribeFilter, event: MatrixClientEvent):
   if (!filter) return true;
   return matchesValue(filter.kind, event.kind)
     && matchesValue(filter.roomId, "roomId" in event ? event.roomId : undefined)
-    && matchesValue(filter.type, "type" in event ? event.type : undefined);
+    && matchesValue(filter.type, "type" in event ? event.type : undefined)
+    && matchesValue(filter.sender, eventSender(event))
+    && matchesValue(filter.threadRoot, eventThreadRoot(event))
+    && matchesValue(filter.relationEventId, eventRelationEventId(event));
 }
 
 function matchesValue(filter: string | string[] | undefined, value: string | undefined): boolean {
   if (filter === undefined) return true;
   if (value === undefined) return false;
   return Array.isArray(filter) ? filter.includes(value) : filter === value;
+}
+
+function eventSender(event: MatrixClientEvent): string | undefined {
+  if ("sender" in event) {
+    return typeof event.sender === "string" ? event.sender : event.sender?.userId;
+  }
+  return undefined;
+}
+
+function eventThreadRoot(event: MatrixClientEvent): string | undefined {
+  return "threadRoot" in event ? event.threadRoot : undefined;
+}
+
+function eventRelationEventId(event: MatrixClientEvent): string | undefined {
+  if ("relation" in event) return event.relation?.eventId;
+  if ("relatesTo" in event) return event.relatesTo;
+  return undefined;
 }
 
 function readNumber(value: unknown): number | undefined {

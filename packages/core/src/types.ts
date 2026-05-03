@@ -316,7 +316,10 @@ export type MatrixClientEvent =
 export type MatrixSubscribeFilter =
   | {
       kind?: MatrixClientEvent["kind"] | MatrixClientEvent["kind"][];
+      relationEventId?: string | string[];
       roomId?: string | string[];
+      sender?: string | string[];
+      threadRoot?: string | string[];
       type?: string | string[];
     }
   | undefined;
