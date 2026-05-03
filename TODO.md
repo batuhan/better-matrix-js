@@ -104,7 +104,7 @@ No backward compatibility is required. Prefer deleting old API shapes and duplic
 - [ ] Room summary/update events if needed for client UIs.
 - [ ] Decryption lifecycle events for pending, retried, failed, and recovered decryptions.
 - [x] Make event filter matching work consistently across `kind`, `roomId`, `type`, sender, relation, and thread root where available.
-- [ ] Add unit tests for every normalized event mapper.
+- [x] Add unit tests for every normalized event mapper.
 - [x] Add Go tests for every event emitted from `/sync`.
 
 ## Core Matrix Capabilities
@@ -282,11 +282,11 @@ No backward compatibility is required. Prefer deleting old API shapes and duplic
 - [x] Subscription multi-subscriber lifecycle.
 - [x] Subscription handler error behavior.
 - [x] Pure helper behavior for `onMessage`, `onReaction`, `onInvite`, `onRawEvent`.
-- [ ] Normalized event mapping for every event kind.
+- [x] Normalized event mapping for every event kind.
 - [x] Raw event path.
 - [x] Storage adapter conformance.
 - [x] Unsupported Chat SDK card/action behavior.
-- [ ] `raw.request` request construction and error handling.
+- [x] `raw.request` request construction and error handling.
 - [x] Account data/to-device/receipt helper tests.
 - [x] Raw request helper tests.
 

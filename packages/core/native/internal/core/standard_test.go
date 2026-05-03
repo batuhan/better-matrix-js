@@ -139,3 +139,13 @@ func TestLogoutUsesMatrixLogoutEndpoint(t *testing.T) {
 		t.Fatalf("unexpected logout request %q", seen)
 	}
 }
+
+func TestRawRequestRejectsAbsoluteURLs(t *testing.T) {
+	core := New(nil)
+	core.client, _ = mautrix.NewClient("https://example.com", id.UserID("@alice:example"), "token")
+
+	_, err := core.handleRawRequest(context.Background(), []byte(`{"path":"https://evil.example/_matrix/client/v3/account/whoami"}`))
+	if err == nil || err.Error() != "raw request path must be relative to the homeserver" {
+		t.Fatalf("expected relative path error, got %v", err)
+	}
+}
