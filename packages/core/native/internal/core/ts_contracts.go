@@ -100,6 +100,7 @@ type MatrixSyncEvent struct {
 	Class          string         `json:"class" tstype:"\"state\" | \"ephemeral\" | \"accountData\" | \"toDevice\" | \"membership\" | \"redaction\" | \"raw\" | string"`
 	Content        map[string]any `json:"content"`
 	EventID        *string        `json:"eventId,omitempty"`
+	NextBatch      *string        `json:"nextBatch,omitempty"`
 	OriginServerTS *int64         `json:"originServerTs,omitempty"`
 	Raw            any            `json:"raw"`
 	RoomID         *string        `json:"roomId,omitempty"`

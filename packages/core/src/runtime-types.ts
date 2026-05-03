@@ -102,6 +102,7 @@ export type MatrixCoreEvent =
   | { event: MatrixInviteEvent; type: "invite" }
   | {
       event: MatrixSyncEvent;
+      nextBatch?: string;
       since?: string;
       type:
         | "account_data"

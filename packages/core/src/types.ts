@@ -185,7 +185,8 @@ export interface MatrixGenericEvent extends MatrixBaseEvent {
     | "receipt"
     | "redaction"
     | "roomState"
-    | "toDevice";
+      | "toDevice";
+  nextBatch?: string;
   section?: string;
   since?: string;
 }

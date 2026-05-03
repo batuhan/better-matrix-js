@@ -19,7 +19,7 @@ export function toClientEvent(event: MatrixCoreEvent): MatrixClientEvent | null 
   if (event.type === "message") return toMessageEvent(event.event);
   if (event.type === "reaction") return toReactionEvent(event.event);
   if (event.type === "invite") return { kind: "invite", ...event.event };
-  if (event.type === "raw_event") return toGenericEvent(event.event, "raw", event.since);
+  if (event.type === "raw_event") return toGenericEvent(event.event, "raw", event.since, event.nextBatch);
   if (event.type === "account_data") return toGenericEvent(event.event, "accountData");
   if (event.type === "to_device") return toGenericEvent(event.event, "toDevice");
   if (event.type === "receipt") return toGenericEvent(event.event, "receipt");
@@ -45,13 +45,15 @@ export function toClientEvent(event: MatrixCoreEvent): MatrixClientEvent | null 
 function toGenericEvent(
   event: import("./runtime-types").MatrixSyncEvent,
   kind: MatrixGenericEvent["kind"],
-  since?: string
+  since?: string,
+  nextBatch?: string
 ): MatrixGenericEvent {
   return stripUndefined({
     class: event.class === "raw" ? "unknown" : event.class,
     content: event.content,
     eventId: event.eventId,
     kind,
+    nextBatch: event.nextBatch ?? nextBatch,
     raw: event.raw,
     roomId: event.roomId,
     section: event.section,

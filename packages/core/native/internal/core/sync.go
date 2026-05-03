@@ -265,42 +265,55 @@ func (c *Core) processSyncMetadata(resp *mautrix.RespSync, since string) {
 		return
 	}
 	for _, evt := range resp.AccountData.Events {
-		c.emitSyncEvent("account_data", "accountData", "", evt, since)
+		c.emitSyncEvent("account_data", "accountData", "", evt, since, resp.NextBatch)
 	}
 	for _, evt := range resp.ToDevice.Events {
-		c.emitSyncEvent("to_device", "toDevice", "", evt, since)
+		c.emitSyncEvent("to_device", "toDevice", "", evt, since, resp.NextBatch)
+	}
+	for roomID, room := range resp.Rooms.Invite {
+		for _, evt := range room.State.Events {
+			c.emitClassifiedRoomEvent("invite_state", roomID, evt, since, resp.NextBatch)
+		}
+	}
+	for roomID, room := range resp.Rooms.Knock {
+		for _, evt := range room.State.Events {
+			c.emitClassifiedRoomEvent("knock_state", roomID, evt, since, resp.NextBatch)
+		}
 	}
 	for roomID, room := range resp.Rooms.Join {
 		for _, evt := range room.State.Events {
-			c.emitClassifiedRoomEvent("room_state", roomID, evt, since)
+			c.emitClassifiedRoomEvent("room_state", roomID, evt, since, resp.NextBatch)
 		}
 		if room.StateAfter != nil {
 			for _, evt := range room.StateAfter.Events {
-				c.emitClassifiedRoomEvent("room_state_after", roomID, evt, since)
+				c.emitClassifiedRoomEvent("room_state_after", roomID, evt, since, resp.NextBatch)
 			}
+		}
+		for _, evt := range room.Timeline.Events {
+			c.emitSyncEvent("room_timeline", "raw", roomID, evt, since, resp.NextBatch)
 		}
 		for _, evt := range room.Ephemeral.Events {
 			class := "ephemeral"
 			if evt != nil && evt.Type == event.EphemeralEventReceipt {
 				class = "receipt"
 			}
-			c.emitSyncEvent("room_ephemeral", class, roomID, evt, since)
+			c.emitSyncEvent("room_ephemeral", class, roomID, evt, since, resp.NextBatch)
 		}
 		for _, evt := range room.AccountData.Events {
-			c.emitSyncEvent("room_account_data", "accountData", roomID, evt, since)
+			c.emitSyncEvent("room_account_data", "accountData", roomID, evt, since, resp.NextBatch)
 		}
 	}
 	for roomID, room := range resp.Rooms.Leave {
 		for _, evt := range room.State.Events {
-			c.emitClassifiedRoomEvent("left_room_state", roomID, evt, since)
+			c.emitClassifiedRoomEvent("left_room_state", roomID, evt, since, resp.NextBatch)
 		}
 		for _, evt := range room.Timeline.Events {
-			c.emitClassifiedRoomEvent("left_room_timeline", roomID, evt, since)
+			c.emitClassifiedRoomEvent("left_room_timeline", roomID, evt, since, resp.NextBatch)
 		}
 	}
 }
 
-func (c *Core) emitClassifiedRoomEvent(section string, roomID id.RoomID, evt *event.Event, since string) {
+func (c *Core) emitClassifiedRoomEvent(section string, roomID id.RoomID, evt *event.Event, since string, nextBatch string) {
 	class := "state"
 	if evt != nil {
 		switch evt.Type {
@@ -310,21 +323,22 @@ func (c *Core) emitClassifiedRoomEvent(section string, roomID id.RoomID, evt *ev
 			class = "redaction"
 		}
 	}
-	c.emitSyncEvent(section, class, roomID, evt, since)
+	c.emitSyncEvent(section, class, roomID, evt, since, nextBatch)
 }
 
-func (c *Core) emitSyncEvent(section string, class string, roomID id.RoomID, evt *event.Event, since string) {
+func (c *Core) emitSyncEvent(section string, class string, roomID id.RoomID, evt *event.Event, since string, nextBatch string) {
 	if evt == nil {
 		return
 	}
 	if roomID != "" && evt.RoomID == "" {
 		evt.RoomID = roomID
 	}
-	syncEvent := c.toMatrixSyncEvent(section, class, evt)
+	syncEvent := c.toMatrixSyncEvent(section, class, evt, nextBatch)
 	c.emit(OutboundEvent{
-		"type":  "raw_event",
-		"event": syncEvent,
-		"since": since,
+		"type":      "raw_event",
+		"event":     syncEvent,
+		"since":     since,
+		"nextBatch": nextBatch,
 	})
 	switch class {
 	case "accountData":
@@ -344,7 +358,7 @@ func (c *Core) emitSyncEvent(section string, class string, roomID id.RoomID, evt
 	}
 }
 
-func (c *Core) toMatrixSyncEvent(section string, class string, evt *event.Event) MatrixSyncEvent {
+func (c *Core) toMatrixSyncEvent(section string, class string, evt *event.Event, nextBatch string) MatrixSyncEvent {
 	content := evt.Content.Raw
 	if content == nil && len(evt.Content.VeryRaw) > 0 {
 		_ = json.Unmarshal(evt.Content.VeryRaw, &content)
@@ -364,6 +378,7 @@ func (c *Core) toMatrixSyncEvent(section string, class string, evt *event.Event)
 		Class:          class,
 		Content:        content,
 		EventID:        eventID,
+		NextBatch:      optionalString(nextBatch),
 		OriginServerTS: originServerTS,
 		Raw:            evt,
 		RoomID:         roomID,

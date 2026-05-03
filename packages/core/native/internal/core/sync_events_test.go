@@ -18,12 +18,13 @@ func TestProcessSyncResponseEmitsGenericAndRawEvents(t *testing.T) {
 	core.client, _ = mautrix.NewClient("https://example.com", id.UserID("@alice:example"), "token")
 	stateKey := "@alice:example"
 	resp := &mautrix.RespSync{
+		NextBatch:   "s124",
 		AccountData: mautrix.SyncEventsList{Events: []*event.Event{syncTestEvent(event.AccountDataDirectChats, map[string]any{"@bob:example": []any{"!room:example"}})}},
 		ToDevice:    mautrix.SyncEventsList{Events: []*event.Event{syncTestEvent(event.ToDeviceRoomKey, map[string]any{"algorithm": "m.megolm.v1.aes-sha2"})}},
 		Rooms: mautrix.RespSyncRooms{Join: map[id.RoomID]*mautrix.SyncJoinedRoom{
 			"!room:example": {
 				AccountData: mautrix.SyncEventsList{Events: []*event.Event{syncTestEvent(event.Type{Type: "m.tag", Class: event.AccountDataEventType}, map[string]any{"tags": map[string]any{}})}},
-				Ephemeral: mautrix.SyncEventsList{Events: []*event.Event{syncTestEvent(event.EphemeralEventReceipt, map[string]any{"$event": map[string]any{}})}},
+				Ephemeral:   mautrix.SyncEventsList{Events: []*event.Event{syncTestEvent(event.EphemeralEventReceipt, map[string]any{"$event": map[string]any{}})}},
 				State: mautrix.SyncEventsList{Events: []*event.Event{{
 					Content:  event.Content{Raw: map[string]any{"membership": "join"}},
 					RoomID:   id.RoomID("!room:example"),
@@ -31,6 +32,15 @@ func TestProcessSyncResponseEmitsGenericAndRawEvents(t *testing.T) {
 					StateKey: &stateKey,
 					Type:     event.StateMember,
 				}}},
+				Timeline: mautrix.SyncTimeline{
+					SyncEventsList: mautrix.SyncEventsList{Events: []*event.Event{{
+						Content: event.Content{Raw: map[string]any{"body": "hello", "msgtype": "m.text"}},
+						ID:      id.EventID("$message"),
+						RoomID:  id.RoomID("!room:example"),
+						Sender:  id.UserID("@alice:example"),
+						Type:    event.EventMessage,
+					}}},
+				},
 			},
 		}},
 	}
@@ -50,8 +60,22 @@ func TestProcessSyncResponseEmitsGenericAndRawEvents(t *testing.T) {
 			t.Fatalf("expected %s event in %#v", eventType, counts)
 		}
 	}
-	if counts["raw_event"] < 5 {
+	if counts["raw_event"] < 6 {
 		t.Fatalf("expected raw event for each sync event, got %d", counts["raw_event"])
+	}
+	foundTimelineRaw := false
+	for _, evt := range emitted {
+		syncEvent, ok := evt["event"].(MatrixSyncEvent)
+		if !ok || syncEvent.Section != "room_timeline" {
+			continue
+		}
+		if syncEvent.NextBatch == nil || *syncEvent.NextBatch != "s124" {
+			t.Fatalf("expected next batch on timeline raw event, got %#v", syncEvent.NextBatch)
+		}
+		foundTimelineRaw = true
+	}
+	if !foundTimelineRaw {
+		t.Fatal("expected room timeline raw event")
 	}
 }
 

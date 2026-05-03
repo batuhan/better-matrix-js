@@ -432,6 +432,7 @@ export interface MatrixSyncEvent {
   class: "state" | "ephemeral" | "accountData" | "toDevice" | "membership" | "redaction" | "raw" | string;
   content: { [key: string]: unknown};
   eventId?: string;
+  nextBatch?: string;
   originServerTs?: number /* int64 */;
   raw: unknown;
   roomId?: string;

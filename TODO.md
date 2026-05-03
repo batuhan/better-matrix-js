@@ -65,8 +65,8 @@ No backward compatibility is required. Prefer deleting old API shapes and duplic
 - [x] `onRawEvent(...)` helper exists.
 - [x] Raw helper currently exposes mapped events plus available raw payload.
 - [ ] Implement true granular raw Matrix sync events from Go for:
-  - [ ] joined room timeline events
-  - [ ] invited room state
+  - [x] joined room timeline events
+  - [x] invited room state
   - [x] left room timeline/state
   - [x] room state events
   - [x] ephemeral room events
@@ -76,7 +76,7 @@ No backward compatibility is required. Prefer deleting old API shapes and duplic
   - [ ] presence events if supported
 - [ ] Raw events must include unmodified Matrix payload and source metadata:
   - [x] sync cursor `since`
-  - [ ] next batch when available
+  - [x] next batch when available
   - [x] room id if applicable
   - [x] event class/source section
   - [x] event type

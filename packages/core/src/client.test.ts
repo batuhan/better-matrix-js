@@ -152,8 +152,10 @@ describe("createMatrixClient", () => {
           roomId: "!room:example.com",
           section: "room_timeline",
           sender: "@alice:example.com",
+          nextBatch: "s124",
           type: "m.room.message",
         },
+        nextBatch: "s124",
         since: "s123",
         type: "raw_event",
       })
@@ -168,6 +170,7 @@ describe("createMatrixClient", () => {
       event: expect.objectContaining({
         eventId: "$event",
         kind: "raw",
+        nextBatch: "s124",
         roomId: "!room:example.com",
         since: "s123",
       }),
