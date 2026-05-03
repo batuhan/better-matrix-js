@@ -99,9 +99,10 @@ class NodeMatrixClient implements MatrixClient {
 
   async subscribe(
     filter: MatrixSubscribeFilter,
-    handler: (event: MatrixClientEvent) => void | Promise<void>
+    handler: (event: MatrixClientEvent) => void | Promise<void>,
+    options?: import("./types").MatrixSubscribeOptions
   ) {
-    return (await this.#runtime()).subscribe(filter, handler);
+    return (await this.#runtime()).subscribe(filter, handler, options);
   }
 
   async whoami() {

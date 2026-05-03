@@ -447,6 +447,31 @@ describe("createMatrixClient", () => {
     expect(calls[2]?.payload).toEqual({ replayMissed: true });
   });
 
+  it("passes sync tuning through subscribe without exposing sync.start", async () => {
+    const calls = installRuntime({
+      init: { deviceId: "DEVICE", userId: "@bot:example.com" },
+      start_sync: {},
+      stop_sync: {},
+    });
+    const client = createMatrixClient({
+      homeserver: "https://matrix.example.com",
+      token: "token",
+      wasmModule: {} as WebAssembly.Module,
+    });
+
+    const sub = await client.subscribe({}, () => undefined, {
+      retryDelayMs: 250,
+      timeoutMs: 5000,
+    });
+    await sub.stop();
+
+    expect(calls.map((call) => call.operation)).toEqual(["init", "start_sync", "stop_sync"]);
+    expect(calls[1]?.payload).toEqual({
+      retryDelayMs: 250,
+      timeoutMs: 5000,
+    });
+  });
+
   it("delivers catchUp events only to the calling subscription", async () => {
     const calls = installRuntime({
       init: { deviceId: "DEVICE", userId: "@bot:example.com" },

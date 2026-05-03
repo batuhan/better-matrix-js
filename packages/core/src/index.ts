@@ -79,6 +79,7 @@ export type {
   MatrixStream,
   MatrixRawEventEnvelope,
   MatrixSubscribeFilter,
+  MatrixSubscribeOptions,
   MatrixSubscription,
   MatrixSyncStatusEvent,
   MatrixThreadSummary,

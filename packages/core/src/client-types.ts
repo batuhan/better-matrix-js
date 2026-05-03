@@ -32,6 +32,7 @@ import type {
   MatrixClientEvent,
   MatrixCryptoStatus,
   MatrixSubscribeFilter,
+  MatrixSubscribeOptions,
   MatrixSubscription,
   MatrixWhoami,
   OpenDMOptions,
@@ -85,7 +86,8 @@ export interface MatrixClient {
   streams: MatrixStreams;
   subscribe(
     filter: MatrixSubscribeFilter,
-    handler: (event: MatrixClientEvent) => void | Promise<void>
+    handler: (event: MatrixClientEvent) => void | Promise<void>,
+    options?: MatrixSubscribeOptions
   ): Promise<MatrixSubscription>;
   sync: MatrixSync;
   typing: MatrixTyping;

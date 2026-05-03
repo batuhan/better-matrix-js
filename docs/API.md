@@ -82,6 +82,15 @@ await sub.done;
 
 The first subscriber starts the internal sync runner. Stopping the last subscriber stops it. Multiple subscribers share one runner.
 
+Optional sync tuning lives on the subscription call, not under `client.sync`:
+
+```ts
+await client.subscribe(filter, handler, {
+  timeoutMs: 30_000,
+  retryDelayMs: 1_000,
+});
+```
+
 ## Catch-Up
 
 Subscriptions are future-only by default. A reused account does not replay stored-cursor backlog unless the caller asks:

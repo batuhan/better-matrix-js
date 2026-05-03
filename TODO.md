@@ -52,7 +52,7 @@ No backward compatibility is required. Prefer deleting old API shapes and duplic
 - [x] Explicit pagination reads history independently of subscription delivery.
 - [x] Stopping the last subscription stops the internal sync runner.
 - [x] Make `sub.done` reject on unrecoverable sync loop errors from Go, not only subscription handler errors.
-- [ ] Add subscription options for runtime sync tuning if needed without exposing `sync.start`.
+- [x] Add subscription options for runtime sync tuning if needed without exposing `sync.start`.
 - [x] Add tests for multiple subscribers sharing one sync runner.
 - [x] Add tests for stopping one subscriber while another remains active.
 - [x] Add tests for handler failures and `done` rejection behavior.

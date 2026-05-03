@@ -24,6 +24,7 @@ import type {
   MatrixClientEvent,
   MatrixClientOptions,
   MatrixSubscribeFilter,
+  MatrixSubscribeOptions,
   MatrixSubscription,
   MatrixThreadSummary,
   MatrixWhoami,
@@ -269,7 +270,8 @@ class DefaultMatrixClient implements MatrixClient {
 
   async subscribe(
     filter: MatrixSubscribeFilter,
-    handler: (event: MatrixClientEvent) => void | Promise<void>
+    handler: (event: MatrixClientEvent) => void | Promise<void>,
+    options: MatrixSubscribeOptions = {}
   ): Promise<MatrixSubscription> {
     const core = await this.#coreReady();
     const subscription = createSubscription(filter, handler, async () => {
@@ -279,7 +281,7 @@ class DefaultMatrixClient implements MatrixClient {
       }
     });
     this.#subscriptions.add(subscription);
-    await this.#startSync(core);
+    await this.#startSync(core, options);
     return {
       catchUp: () => this.#catchUp(subscription),
       done: subscription.done,
@@ -346,7 +348,7 @@ class DefaultMatrixClient implements MatrixClient {
     return fn(await this.#coreReady());
   }
 
-  async #startSync(core: MatrixCore): Promise<void> {
+  async #startSync(core: MatrixCore, options: MatrixSubscribeOptions): Promise<void> {
     if (this.#syncDone) return;
     this.#syncDone = new Promise<void>((resolve, reject) => {
       this.#syncResolve = resolve;
@@ -356,6 +358,8 @@ class DefaultMatrixClient implements MatrixClient {
     try {
       await core.startSync(stripUndefined({
         beeperStreaming: this.#options.beeper,
+        retryDelayMs: options.retryDelayMs,
+        timeoutMs: options.timeoutMs,
       }));
     } catch (error) {
       this.#syncReject?.(error);

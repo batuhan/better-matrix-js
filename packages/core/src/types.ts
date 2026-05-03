@@ -327,6 +327,11 @@ export type MatrixSubscribeFilter =
     }
   | undefined;
 
+export interface MatrixSubscribeOptions {
+  retryDelayMs?: number;
+  timeoutMs?: number;
+}
+
 export interface MatrixSubscription {
   catchUp(): Promise<void>;
   done: Promise<void>;
