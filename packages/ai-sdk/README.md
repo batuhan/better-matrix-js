@@ -1,6 +1,6 @@
 # @beeper/pickle-ai-sdk
 
-Pipe an [AI SDK](https://sdk.vercel.ai) UI message stream straight into a Matrix message via [`@beeper/pickle-chat-adapter`](https://github.com/beeper/Pickle/tree/main/packages/chat-adapter).
+Pipe an [AI SDK](https://sdk.vercel.ai) UI message stream straight into a Matrix message via [`@beeper/pickle-chat-adapter`](https://github.com/beeper/pickle/tree/main/packages/chat-adapter).
 
 ```sh
 npm install @beeper/pickle-ai-sdk

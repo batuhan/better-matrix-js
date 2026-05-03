@@ -122,7 +122,7 @@ const status = await client.crypto.status();
 - **Beeper-only:** `beeper.ephemeral`, `beeper.streams`
 - **Escape hatch:** `raw.request({ method, path, body })`
 
-See [`docs/API.md`](https://github.com/beeper/Pickle/blob/main/docs/API.md) for full details.
+See [`docs/API.md`](https://github.com/beeper/pickle/blob/main/docs/API.md) for full details.
 
 ## Store ownership
 

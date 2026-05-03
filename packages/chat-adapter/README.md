@@ -3,7 +3,7 @@
 [Chat SDK](https://www.npmjs.com/package/chat) adapter for Matrix. Same bot, same code, runs on Matrix, Slack, Discord, Teams.
 
 ```sh
-npm install chat @beeper/@beeper/pickle @beeper/pickle-chat-adapter
+npm install chat @beeper/pickle @beeper/pickle-chat-adapter
 ```
 
 ## Usage
@@ -60,7 +60,7 @@ async function* agentStream(prompt: string) {
 }
 ```
 
-On Beeper homeservers this uses native streaming events; elsewhere it falls back to debounced edits. Wire the AI SDK directly with [`@beeper/pickle-ai-sdk`](https://github.com/beeper/Pickle/tree/main/packages/ai-sdk).
+On Beeper homeservers this uses native streaming events; elsewhere it falls back to debounced edits. Wire the AI SDK directly with [`@beeper/pickle-ai-sdk`](https://github.com/beeper/pickle/tree/main/packages/ai-sdk).
 
 ## Thread IDs
 

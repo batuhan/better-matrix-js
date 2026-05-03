@@ -2,10 +2,10 @@
 
 > ⚠️ **Experimental — doesn't work yet.** This package is in active design. The APIs and Durable Object below compile and have unit tests, but no end-to-end Cloudflare deployment has been validated. Expect breaking changes and runtime issues. Don't ship it.
 
-Cloudflare Workers helpers for [`@beeper/pickle`](https://github.com/beeper/Pickle): KV / Durable Object stores and a long-poll sync Durable Object.
+Cloudflare Workers helpers for [`@beeper/pickle`](https://github.com/beeper/pickle): KV / Durable Object stores and a long-poll sync Durable Object.
 
 ```sh
-npm install @beeper/@beeper/pickle @beeper/pickle-cloudflare
+npm install @beeper/pickle @beeper/pickle-cloudflare
 ```
 
 ## State
@@ -96,7 +96,7 @@ One `MatrixSyncDurableObject` per Matrix account. It owns the `/sync` cursor; th
 | `syncTimeoutMs` | `MATRIX_SYNC_TIMEOUT_MS` | `30000` |
 | `retryMs` / `maxRetryMs` | `MATRIX_SYNC_RETRY_MS` / `MATRIX_SYNC_MAX_RETRY_MS` | `1000` / `60000` |
 
-See [`examples/cloudflare-worker`](https://github.com/beeper/Pickle/tree/main/examples/cloudflare-worker) for the full setup.
+See [`examples/cloudflare-worker`](https://github.com/beeper/pickle/tree/main/examples/cloudflare-worker) for the full setup.
 
 ## License
 

@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "description": "Matrix adapter for Chat SDK",
   "type": "module",
-  "homepage": "https://github.com/beeper/Pickle#readme",
+  "homepage": "https://github.com/beeper/pickle#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/beeper/Pickle.git",
+    "url": "git+https://github.com/beeper/pickle.git",
     "directory": "packages/chat-adapter"
   },
   "bugs": {
-    "url": "https://github.com/beeper/Pickle/issues"
+    "url": "https://github.com/beeper/pickle/issues"
   },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
