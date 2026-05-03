@@ -158,7 +158,7 @@ No backward compatibility is required. Prefer deleting old API shapes and duplic
 - [ ] Persist room summaries needed for bot/client startup.
 - [ ] Persist relation summaries needed for reactions/threads.
 - [ ] Add bounded recent event cache and eviction tests.
-- [ ] Document single-writer requirements per store.
+- [x] Document single-writer requirements per store.
 - [x] Cloudflare Durable Object store smoke after subscription API change.
 - [x] IndexedDB smoke after subscription API change.
 
@@ -301,5 +301,5 @@ No backward compatibility is required. Prefer deleting old API shapes and duplic
 - [ ] Browser smoke.
 - [ ] Node live e2e with cached accounts.
 - [x] Review public exports for duplicate or fake layers.
-- [ ] Review code for duplicate types and adapters owning core logic.
+- [x] Review code for duplicate types and adapters owning core logic.
 - [x] Review docs for stale old API references.

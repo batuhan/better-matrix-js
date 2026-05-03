@@ -158,6 +158,12 @@ const client = createMatrixClient({
 
 `recoveryKey` unlocks Matrix key backup for historical encrypted messages. `pickleKey` protects local crypto state and must remain stable for the device/store pair.
 
+## Store Ownership
+
+Each Matrix account/device store is single-writer. Do not run two live clients, webhook consumers, or Durable Objects against the same store prefix at the same time. Multiple logical bots can share a process by creating separate clients with separate account/device stores.
+
+The storage adapters persist fast-boot state only: account/session material supplied by the app, crypto state, sync cursors, pending decryptions, and small summaries/caches. They intentionally do not model a full gomuks-style timeline database.
+
 ## Unsupported Chat SDK Features
 
 Matrix has no native portable equivalent for Chat SDK modals, scheduled messages, or interactive cards/actions. The adapter may render plain text only when that does not imply unsupported interactivity; otherwise it should throw clearly.
