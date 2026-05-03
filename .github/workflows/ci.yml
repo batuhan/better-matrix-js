@@ -28,8 +28,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: packages/core/native/go.mod
-          cache-dependency-path: packages/core/native/go.sum
+          go-version-file: packages/pickle/native/go.mod
+          cache-dependency-path: packages/pickle/native/go.sum
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
