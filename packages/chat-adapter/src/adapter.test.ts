@@ -167,28 +167,12 @@ function makeCore(overrides: Partial<MatrixCore> = {}) {
         register: core.registerBeeperStream,
       },
     },
-    close: core.close,
-    connect: () =>
+    boot: () =>
       core.init({
         accessToken: "token",
         homeserverUrl: "https://matrix.beeper.com",
       }),
-    events: {
-      on: (next) => {
-        listeners.add(next);
-        return () => {
-          listeners.delete(next);
-        };
-      },
-      onMessage: (next) => {
-        listeners.add(next as (event: MatrixClientEvent) => void);
-        return () => undefined;
-      },
-      onReaction: (next) => {
-        listeners.add(next as (event: MatrixClientEvent) => void);
-        return () => undefined;
-      },
-    },
+    close: core.close,
     media: {
       download: async (options) => {
         const result = await core.downloadMedia(options);
@@ -278,11 +262,18 @@ function makeCore(overrides: Partial<MatrixCore> = {}) {
     streams: {
       send: sendStream,
     },
+    subscribe: async (_filter, next) => {
+      listeners.add(next as (event: MatrixClientEvent) => void);
+      return {
+        catchUp: core.syncOnce,
+        done: Promise.resolve(),
+        stop: async () => {
+          listeners.delete(next as (event: MatrixClientEvent) => void);
+        },
+      };
+    },
     sync: {
       applyResponse: core.applySyncResponse,
-      once: core.syncOnce,
-      start: async () => undefined,
-      stop: async () => undefined,
     },
     typing: { set: core.setTyping },
     users: { get: core.getUser },
@@ -373,10 +364,7 @@ describe("MatrixAdapter", () => {
 
     await adapter.initialize(makeChat());
 
-    expect(core.init).toHaveBeenCalledWith({
-      accessToken: "token",
-      homeserverUrl: "https://matrix.beeper.com",
-    });
+    expect(core.whoami).toHaveBeenCalledOnce();
   });
 
   it("connects the injected Matrix client", async () => {
@@ -384,16 +372,12 @@ describe("MatrixAdapter", () => {
     const adapter = new MatrixAdapter({
       token: "token",
       client,
-      deviceId: "DEVICE",
       homeserver: "https://matrix.example.com",
-      initialSync: "persisted",
-      since: "s123",
-      sync: { enabled: false },
-      userId: "@bot:example.com",
+      sync: { enabled: true },
     });
     await adapter.initialize(makeChat());
 
-    expect(core.init).toHaveBeenCalledOnce();
+    expect(core.whoami).toHaveBeenCalledOnce();
   });
 
   it("parses Matrix formatted HTML and m.mentions into Chat SDK messages", async () => {
@@ -402,7 +386,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.example.com",
-      sync: { enabled: false },
+      sync: { enabled: true },
     });
     await adapter.initialize(makeChat());
 
@@ -437,7 +421,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.example.com",
-      sync: { enabled: false },
+      sync: { enabled: true },
     });
     await adapter.initialize(makeChat());
 
@@ -586,7 +570,7 @@ describe("MatrixAdapter", () => {
       token: "token",
       client,
       homeserver: "https://matrix.example.com",
-      sync: { enabled: false },
+      sync: { enabled: true },
     });
     await adapter.initialize(chat);
 
@@ -622,7 +606,7 @@ describe("MatrixAdapter", () => {
       client,
       homeserver: "https://matrix.example.com",
       inviteAutoJoin: { inviterAllowlist: ["@alice:example.com"] },
-      sync: { enabled: false },
+      sync: { enabled: true },
     });
     await adapter.initialize(makeChat());
 
@@ -651,7 +635,7 @@ describe("MatrixAdapter", () => {
       client,
         homeserver: "https://matrix.example.com",
         inviteAutoJoin: { inviterAllowlist: ["@alice:example.com"] },
-        sync: { enabled: false },
+        sync: { enabled: true },
       });
       await adapter.initialize(makeChat());
 
@@ -680,7 +664,7 @@ describe("MatrixAdapter", () => {
       commandPrefix: "/",
       client,
       homeserver: "https://matrix.example.com",
-      sync: { enabled: false },
+      sync: { enabled: true },
     });
     await adapter.initialize(chat);
 

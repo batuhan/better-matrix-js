@@ -29,8 +29,8 @@ import type {
   MarkReadOptions,
   MatrixClientEvent,
   MatrixCryptoStatus,
-  MatrixMessageEvent,
-  MatrixReactionEvent,
+  MatrixSubscribeFilter,
+  MatrixSubscription,
   MatrixWhoami,
   OpenDMOptions,
   OpenDMResult,
@@ -53,8 +53,6 @@ import type {
   SetOwnAvatarUrlOptions,
   SetOwnDisplayNameOptions,
   SentEvent,
-  SyncOnceOptions,
-  SyncStartOptions,
   TypingOptions,
   UnbanUserOptions,
   UploadEncryptedMediaResult,
@@ -65,15 +63,18 @@ import type {
 
 export interface MatrixClient {
   beeper: MatrixBeeper;
+  boot(): Promise<MatrixWhoami>;
   close(): Promise<void>;
-  connect(options?: { signal?: AbortSignal }): Promise<MatrixWhoami>;
   crypto: MatrixCrypto;
-  events: MatrixEvents;
   media: MatrixMedia;
   messages: MatrixMessages;
   reactions: MatrixReactions;
   rooms: MatrixRooms;
   streams: MatrixStreams;
+  subscribe(
+    filter: MatrixSubscribeFilter,
+    handler: (event: MatrixClientEvent) => void | Promise<void>
+  ): Promise<MatrixSubscription>;
   sync: MatrixSync;
   typing: MatrixTyping;
   users: MatrixUsers;
@@ -97,12 +98,6 @@ export interface MatrixStreams {
 
 export interface MatrixCrypto {
   status(): Promise<MatrixCryptoStatus>;
-}
-
-export interface MatrixEvents {
-  on(listener: (event: MatrixClientEvent) => void): () => void;
-  onMessage(listener: (event: MatrixMessageEvent) => void): () => void;
-  onReaction(listener: (event: MatrixReactionEvent) => void): () => void;
 }
 
 export interface MatrixMessages {
@@ -165,7 +160,4 @@ export interface MatrixUsers {
 
 export interface MatrixSync {
   applyResponse(options: ApplySyncResponseOptions): Promise<void>;
-  once(options?: SyncOnceOptions): Promise<void>;
-  start(options?: SyncStartOptions): Promise<void>;
-  stop(): Promise<void>;
 }

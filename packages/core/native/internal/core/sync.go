@@ -18,6 +18,7 @@ const (
 
 type MatrixSyncOnceOptions struct {
 	BeeperStreaming bool `json:"beeperStreaming,omitempty"`
+	ReplayMissed    bool `json:"replayMissed,omitempty"`
 	TimeoutMS       int  `json:"timeoutMs,omitempty"`
 }
 
@@ -42,7 +43,7 @@ func (c *Core) handleSyncOnce(ctx context.Context, payload []byte) ([]byte, erro
 	if req.TimeoutMS <= 0 {
 		req.TimeoutMS = defaultSyncTimeoutMS
 	}
-	if err := c.syncOnce(ctx, req.TimeoutMS, req.BeeperStreaming, true); err != nil {
+	if err := c.syncOnce(ctx, req.TimeoutMS, req.BeeperStreaming, true, req.ReplayMissed); err != nil {
 		return nil, err
 	}
 	return c.empty()
@@ -100,7 +101,7 @@ func (c *Core) runSyncLoop(ctx context.Context, done chan struct{}, req MatrixSy
 	failures := 0
 	for {
 		c.syncMu.Lock()
-		err := c.syncOnce(ctx, req.TimeoutMS, req.BeeperStreaming, false)
+		err := c.syncOnce(ctx, req.TimeoutMS, req.BeeperStreaming, false, false)
 		c.syncMu.Unlock()
 		if err == nil {
 			failures = 0
@@ -134,7 +135,13 @@ func (c *Core) runSyncLoop(ctx context.Context, done chan struct{}, req MatrixSy
 	}
 }
 
-func (c *Core) syncOnce(ctx context.Context, timeoutMS int, beeperStreaming bool, emitFailure bool) error {
+func (c *Core) syncOnce(
+	ctx context.Context,
+	timeoutMS int,
+	beeperStreaming bool,
+	emitFailure bool,
+	replayMissed bool,
+) error {
 	started := time.Now()
 
 	cli, err := c.requireClient()
@@ -142,7 +149,7 @@ func (c *Core) syncOnce(ctx context.Context, timeoutMS int, beeperStreaming bool
 		return err
 	}
 	filterID := liveSyncFilter
-	skipTimelines := c.skipNextSync
+	skipTimelines := c.skipNextSync && !replayMissed
 	if skipTimelines {
 		timeoutMS = 0
 		filterID = noHistorySyncFilter

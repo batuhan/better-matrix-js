@@ -1,4 +1,5 @@
 import type {
+  MatrixAccount,
   MatrixClient,
   MatrixStore,
 } from "better-matrix-js";
@@ -9,16 +10,13 @@ export interface MatrixChatThreadRef {
 }
 
 interface MatrixAdapterBaseConfig {
+  account?: MatrixAccount;
   beeper?: boolean;
   commandPrefix?: string;
-  deviceId?: string;
   homeserver?: string;
-  initialSync?: "persisted" | "latest" | "catchUp";
   pickleKey?: string;
   sync?: {
     enabled?: boolean;
-    retryDelayMs?: number;
-    timeoutMs?: number;
   };
   recoveryKey?: string;
   verifyRecoveryOnStart?: boolean;
@@ -26,12 +24,10 @@ interface MatrixAdapterBaseConfig {
     inviterAllowlist?: string[];
   };
   roomAllowlist?: string[];
-  since?: string;
   storePrefix?: string;
   store?: MatrixStore;
   token: string;
   typingTimeoutMs?: number;
-  userId?: string;
   wasmBytes?: BufferSource;
   wasmModule?: WebAssembly.Module;
   wasmUrl?: string | URL;

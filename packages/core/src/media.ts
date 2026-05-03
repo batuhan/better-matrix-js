@@ -10,10 +10,10 @@ import type {
   UploadMediaResult,
 } from "./types";
 
-export function createMatrixMedia(core: () => MatrixCore): MatrixMedia {
+export function createMatrixMedia(core: () => MatrixCore | Promise<MatrixCore>): MatrixMedia {
   return {
     download: async (opts) => {
-      const runtime = core();
+      const runtime = await core();
       if (runtime.callBytesResult && runtime.supportsByteCalls?.()) {
         return { bytes: await runtime.callBytesResult("download_media_bytes", opts) };
       }
@@ -21,7 +21,7 @@ export function createMatrixMedia(core: () => MatrixCore): MatrixMedia {
       return { bytes: base64ToBytes(result.bytesBase64) };
     },
     downloadThumbnail: async (opts) => {
-      const runtime = core();
+      const runtime = await core();
       if (runtime.callBytesResult && runtime.supportsByteCalls?.()) {
         return { bytes: await runtime.callBytesResult("download_media_thumbnail_bytes", opts) };
       }
@@ -29,15 +29,15 @@ export function createMatrixMedia(core: () => MatrixCore): MatrixMedia {
       return { bytes: base64ToBytes(result.bytesBase64) };
     },
     downloadEncrypted: async (opts) => {
-      const runtime = core();
+      const runtime = await core();
       if (runtime.callBytesResult && runtime.supportsByteCalls?.()) {
         return { bytes: await runtime.callBytesResult("download_encrypted_media_bytes", opts) };
       }
       const result = await runtime.downloadEncryptedMedia(opts);
       return { bytes: base64ToBytes(result.bytesBase64) };
     },
-    upload: (opts) => uploadMediaBytes(core(), opts),
-    uploadEncrypted: (opts) => uploadEncryptedMediaBytes(core(), opts),
+    upload: async (opts) => uploadMediaBytes(await core(), opts),
+    uploadEncrypted: async (opts) => uploadEncryptedMediaBytes(await core(), opts),
   };
 }
 

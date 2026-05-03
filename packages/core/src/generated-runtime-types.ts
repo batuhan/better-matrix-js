@@ -305,6 +305,7 @@ export interface MatrixUnbanUserOptions {
 }
 export interface MatrixSyncOnceOptions {
   beeperStreaming?: boolean;
+  replayMissed?: boolean;
   timeoutMs?: number /* int */;
 }
 export interface MatrixSyncStartOptions {

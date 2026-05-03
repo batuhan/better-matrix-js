@@ -10,19 +10,17 @@ export interface MatrixLogger {
 }
 
 export interface MatrixClientOptions {
+  account?: MatrixAccount;
   beeper?: boolean;
-  deviceId?: string;
+  boot?: boolean;
   fetch?: typeof fetch;
-  homeserver: string;
-  initialSync?: "persisted" | "latest" | "catchUp";
+  homeserver?: string;
   logger?: MatrixLogger;
   pickleKey?: string;
   randomBytes?: (length: number) => Uint8Array;
   recoveryKey?: string;
-  since?: string;
   store?: MatrixStore;
-  token: string;
-  userId?: string;
+  token?: string;
   verifyRecoveryOnStart?: boolean;
   wasmBytes?: BufferSource;
   wasmModule?: WebAssembly.Module;
@@ -68,12 +66,15 @@ export interface SendBeeperEphemeralOptions {
   transactionId?: string;
 }
 
-export interface MatrixSession {
+export interface MatrixAccount {
   accessToken: string;
   deviceId: string;
   homeserver: string;
+  metadata?: Record<string, unknown>;
   userId: string;
 }
+
+export type MatrixSession = MatrixAccount;
 
 export interface MatrixWhoami {
   deviceId: string;
@@ -237,6 +238,31 @@ export type MatrixClientEvent =
   | MatrixCryptoStatusEvent
   | MatrixDecryptionErrorEvent
   | MatrixErrorEvent;
+
+export type MatrixSubscribeFilter =
+  | {
+      kind?: MatrixClientEvent["kind"] | MatrixClientEvent["kind"][];
+      roomId?: string | string[];
+      type?: string | string[];
+    }
+  | undefined;
+
+export interface MatrixSubscription {
+  catchUp(): Promise<void>;
+  done: Promise<void>;
+  stop(): Promise<void>;
+}
+
+export interface MatrixRawEventEnvelope {
+  event: MatrixClientEvent;
+  kind: "raw";
+  raw: unknown;
+  source: {
+    kind: MatrixClientEvent["kind"];
+    roomId?: string;
+    type?: string;
+  };
+}
 
 export interface SendMessageOptions {
   content?: Record<string, unknown>;
@@ -580,18 +606,6 @@ export interface MatrixThreadSummary {
 export interface ListThreadsResult {
   nextCursor?: string;
   threads: MatrixThreadSummary[];
-}
-
-export interface SyncStartOptions {
-  beeper?: boolean;
-  retryDelayMs?: number;
-  signal?: AbortSignal;
-  timeoutMs?: number;
-}
-
-export interface SyncOnceOptions {
-  beeper?: boolean;
-  timeoutMs?: number;
 }
 
 export interface ApplySyncResponseOptions {

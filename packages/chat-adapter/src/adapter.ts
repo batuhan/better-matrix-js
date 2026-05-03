@@ -3,8 +3,10 @@ import {
   type MatrixAttachment as MatrixClientAttachment,
   type MatrixClient,
   type MatrixClientEvent,
+  type MatrixClientOptions,
   type MatrixEncryptedFile,
   type MatrixMessageEvent,
+  type MatrixSubscription,
   type RoomInfo,
   type MatrixStore,
 } from "better-matrix-js";
@@ -117,7 +119,7 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixMessage
   #inviteJoinTasks = new Map<string, Promise<void>>();
   #roomCache = new Map<string, RoomCacheEntry>();
   #roomAllowlist: Set<string> | null;
-  #unsubscribeClient: (() => void) | null = null;
+  #subscription: MatrixSubscription | null = null;
   #userId: string | null = null;
   #webhookOptions: WebhookOptions | undefined;
   #isBeeperHomeserver: boolean;
@@ -135,27 +137,20 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixMessage
     this.#chat = chat;
     this.#logger = chat.getLogger("matrix");
     this.#client = await this.#resolveClient();
-    this.#unsubscribeClient?.();
-    this.#unsubscribeClient = this.#client.events.on((event) => this.#handleClientEvent(event));
-    const whoami = await this.#client.connect();
+    await this.#subscription?.stop();
+    this.#subscription = null;
+    const whoami = await this.#client.whoami();
     this.#userId = whoami.userId;
     this.botUserId = whoami.userId;
 
     if (this.#config.sync?.enabled !== false) {
-      const syncOptions = {};
-      if (this.#config.sync?.retryDelayMs !== undefined) {
-        Object.assign(syncOptions, { retryDelayMs: this.#config.sync.retryDelayMs });
-      }
-      if (this.#config.sync?.timeoutMs !== undefined) {
-        Object.assign(syncOptions, { timeoutMs: this.#config.sync.timeoutMs });
-      }
-      await this.#client.sync.start(syncOptions);
+      this.#subscription = await this.#client.subscribe({}, (event) => this.#handleClientEvent(event));
     }
   }
 
   async disconnect(): Promise<void> {
-    this.#unsubscribeClient?.();
-    this.#unsubscribeClient = null;
+    await this.#subscription?.stop();
+    this.#subscription = null;
     await this.#client?.close();
     this.#client = null;
     this.#chat = null;
@@ -799,18 +794,15 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixMessage
     if (!this.#config.token) {
       throw new Error("Matrix adapter requires token unless client or createClient is provided.");
     }
-    const options = {
+    const options: MatrixClientOptions = {
       homeserver: this.#homeserverUrl,
       store: this.#config.store ?? this.#chatStateStore(),
       token: this.#config.token,
     };
+    if (this.#config.account !== undefined) Object.assign(options, { account: this.#config.account });
     if (this.#config.beeper !== undefined) Object.assign(options, { beeper: this.#config.beeper });
-    if (this.#config.deviceId !== undefined) Object.assign(options, { deviceId: this.#config.deviceId });
-    if (this.#config.initialSync !== undefined) Object.assign(options, { initialSync: this.#config.initialSync });
     if (this.#config.pickleKey !== undefined) Object.assign(options, { pickleKey: this.#config.pickleKey });
     if (this.#config.recoveryKey !== undefined) Object.assign(options, { recoveryKey: this.#config.recoveryKey });
-    if (this.#config.since !== undefined) Object.assign(options, { since: this.#config.since });
-    if (this.#config.userId !== undefined) Object.assign(options, { userId: this.#config.userId });
     if (this.#config.verifyRecoveryOnStart !== undefined) {
       Object.assign(options, { verifyRecoveryOnStart: this.#config.verifyRecoveryOnStart });
     }
@@ -828,7 +820,7 @@ export class MatrixAdapter implements Adapter<MatrixChatThreadRef, MatrixMessage
       prefix:
         this.#config.storePrefix ??
         `matrix:${safeStateKeyPart(this.#homeserverUrl)}:${safeStateKeyPart(
-          this.#config.userId ?? this.#config.deviceId ?? "default"
+          this.#config.account?.userId ?? "default"
         )}:`,
     });
   }

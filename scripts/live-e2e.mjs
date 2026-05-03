@@ -36,15 +36,9 @@ async function createAccount(role, runDir) {
     store: createFileMatrixStore(join(runDir, role.toLowerCase())),
     token: accessToken,
   });
-  client.events.on((event) => events.push(event));
-  const whoami = await client.connect();
-  return { client, events, role, userId: whoami.userId };
-}
-
-async function sync(client, count = 1, timeoutMs = 3_000) {
-  for (let index = 0; index < count; index += 1) {
-    await client.sync.once({ timeoutMs });
-  }
+  const whoami = await client.whoami();
+  const subscription = await client.subscribe({}, (event) => events.push(event));
+  return { client, events, role, subscription, userId: whoami.userId };
 }
 
 async function retry(label, fn, timeoutMs = 30_000) {
@@ -74,11 +68,11 @@ async function joinRoomIfNeeded(client, roomId) {
 async function syncUntil(label, account, predicate, timeoutMs = 45_000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
-    await sync(account.client);
     const match = predicate();
     if (match) {
       return match;
     }
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw new Error(`${label} timed out`);
 }
@@ -126,10 +120,8 @@ async function main() {
       createAccount("PEER", runDir),
     ]);
 
-    await Promise.all([sync(bot.client), sync(peer.client)]);
     const dm = await bot.client.rooms.openDM({ userId: peer.userId });
     await retry("peer join", async () => joinRoomIfNeeded(peer.client, dm.roomId), timeoutMs);
-    await Promise.all([sync(bot.client, 5), sync(peer.client, 5)]);
 
     const room = await bot.client.rooms.get({ roomId: dm.roomId });
     if (!room.encrypted) {
@@ -145,8 +137,6 @@ async function main() {
     if (!seenByPeer.encrypted) {
       throw new Error("Peer received bot message, but it was not marked encrypted");
     }
-    await Promise.all([sync(bot.client, 5), sync(peer.client, 5)]);
-
     const peerText = `hello from peer ${Date.now()}`;
     const peerMessage = await peer.client.messages.send({ text: peerText, roomId: dm.roomId });
     const seenByBot = await syncUntil("bot receives peer message", bot, () =>

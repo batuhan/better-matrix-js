@@ -1,10 +1,10 @@
 export { copyBytes } from "./bytes";
 export { createMatrixClient } from "./client";
+export { onInvite, onMessage, onRawEvent, onReaction } from "./helpers";
 export { createMatrixLogin } from "./login";
 export type {
   MatrixClient,
   MatrixBeeper,
-  MatrixEvents,
   MatrixMedia,
   MatrixMessages,
   MatrixReactions,
@@ -51,6 +51,7 @@ export type {
   MarkReadOptions,
   MatrixAttachment,
   MatrixBeeperStreamDescriptor,
+  MatrixAccount,
   MatrixBaseEvent,
   MatrixClientEvent,
   MatrixClientOptions,
@@ -70,6 +71,9 @@ export type {
   MatrixSession,
   MatrixStore,
   MatrixStream,
+  MatrixRawEventEnvelope,
+  MatrixSubscribeFilter,
+  MatrixSubscription,
   MatrixSyncStatusEvent,
   MatrixThreadSummary,
   MatrixWhoami,
@@ -97,8 +101,6 @@ export type {
   SetOwnAvatarUrlOptions,
   SetOwnDisplayNameOptions,
   SentEvent,
-  SyncOnceOptions,
-  SyncStartOptions,
   TypingOptions,
   UnbanUserOptions,
   UploadEncryptedMediaResult,

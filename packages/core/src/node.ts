@@ -3,8 +3,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runInThisContext } from "node:vm";
 import { createMatrixClient as createRuntimeMatrixClient } from "./client";
+export { onInvite, onMessage, onRawEvent, onReaction } from "./helpers";
 import type { MatrixClient } from "./client-types";
-import type { MatrixClientOptions } from "./types";
+import type { MatrixClientEvent, MatrixClientOptions, MatrixSubscribeFilter } from "./types";
 import { loadMatrixCore, type LoadMatrixCoreOptions, type MatrixWasmCore } from "./wasm";
 
 interface LoadMatrixCoreFromNodeOptions extends Omit<LoadMatrixCoreOptions, "wasmUrl"> {
@@ -24,110 +25,120 @@ export function createMatrixClient(options: NodeMatrixClientOptions): MatrixClie
 class NodeMatrixClient implements MatrixClient {
   readonly #options: NodeMatrixClientOptions;
   #client: MatrixClient | null = null;
-  #eventListeners = new Set<Parameters<MatrixClient["events"]["on"]>[0]>();
+  #clientPromise: Promise<MatrixClient> | null = null;
 
   constructor(options: NodeMatrixClientOptions) {
     this.#options = options;
   }
 
-  get events() {
-    return {
-      on: (listener: Parameters<MatrixClient["events"]["on"]>[0]) => {
-        this.#eventListeners.add(listener);
-        const unsubscribe = this.#client?.events.on(listener);
-        return () => {
-          this.#eventListeners.delete(listener);
-          unsubscribe?.();
-        };
-      },
-      onMessage: (listener: Parameters<MatrixClient["events"]["onMessage"]>[0]) =>
-        this.events.on((event) => {
-          if (event.kind === "message") listener(event);
-        }),
-      onReaction: (listener: Parameters<MatrixClient["events"]["onReaction"]>[0]) =>
-        this.events.on((event) => {
-          if (event.kind === "reaction") listener(event);
-        }),
-    };
-  }
-
   get beeper() {
-    return this.#clientRequired().beeper;
+    return this.#namespace("beeper");
   }
 
   get crypto() {
-    return this.#clientRequired().crypto;
+    return this.#namespace("crypto");
   }
 
   get media() {
-    return this.#clientRequired().media;
+    return this.#namespace("media");
   }
 
   get messages() {
-    return this.#clientRequired().messages;
+    return this.#namespace("messages");
   }
 
   get reactions() {
-    return this.#clientRequired().reactions;
+    return this.#namespace("reactions");
   }
 
   get rooms() {
-    return this.#clientRequired().rooms;
+    return this.#namespace("rooms");
   }
 
   get streams() {
-    return this.#clientRequired().streams;
+    return this.#namespace("streams");
   }
 
   get sync() {
-    return this.#clientRequired().sync;
+    return this.#namespace("sync");
   }
 
   get typing() {
-    return this.#clientRequired().typing;
+    return this.#namespace("typing");
   }
 
   get users() {
-    return this.#clientRequired().users;
+    return this.#namespace("users");
   }
 
   async close(): Promise<void> {
     await this.#client?.close();
     this.#client = null;
+    this.#clientPromise = null;
   }
 
-  async connect(options?: { signal?: AbortSignal }) {
+  async boot() {
+    return (await this.#runtime()).boot();
+  }
+
+  async subscribe(
+    filter: MatrixSubscribeFilter,
+    handler: (event: MatrixClientEvent) => void | Promise<void>
+  ) {
+    return (await this.#runtime()).subscribe(filter, handler);
+  }
+
+  async whoami() {
+    return (await this.#runtime()).whoami();
+  }
+
+  async #runtime(): Promise<MatrixClient> {
     if (!this.#client) {
-      const { wasmExecPath, wasmPath, ...clientOptions } = this.#options;
-      const distDir = dirname(fileURLToPath(import.meta.url));
-      if (!clientOptions.wasmBytes && !clientOptions.wasmModule) {
-        clientOptions.wasmBytes = await readFile(wasmPath ?? join(distDir, "matrix-core.wasm"));
-      }
-      if (!clientOptions.wasmBytes && !clientOptions.wasmModule) {
-        throw new Error("Matrix WASM bytes are missing");
-      }
-      if (!globalThis.Go) {
-        const runtimePath = wasmExecPath ?? join(distDir, "wasm_exec.js");
-        runInThisContext(await readFile(runtimePath, "utf8"), { filename: runtimePath });
-      }
-      this.#client = createRuntimeMatrixClient(clientOptions);
-      for (const listener of this.#eventListeners) {
-        this.#client.events.on(listener);
-      }
-    }
-    return this.#client.connect(options);
-  }
-
-  whoami() {
-    return this.#clientRequired().whoami();
-  }
-
-  #clientRequired(): MatrixClient {
-    if (!this.#client) {
-      throw new Error("Matrix client is not connected. Call connect() first.");
+      this.#clientPromise ??= this.#createRuntime();
+      this.#client = await this.#clientPromise;
     }
     return this.#client;
   }
+
+  async #createRuntime(): Promise<MatrixClient> {
+    const { wasmExecPath, wasmPath, ...clientOptions } = this.#options;
+    const distDir = dirname(fileURLToPath(import.meta.url));
+    if (!clientOptions.wasmBytes && !clientOptions.wasmModule) {
+      clientOptions.wasmBytes = await readFile(wasmPath ?? join(distDir, "matrix-core.wasm"));
+    }
+    if (!clientOptions.wasmBytes && !clientOptions.wasmModule) {
+      throw new Error("Matrix WASM bytes are missing");
+    }
+    if (!globalThis.Go) {
+      const runtimePath = wasmExecPath ?? join(distDir, "wasm_exec.js");
+      runInThisContext(await readFile(runtimePath, "utf8"), { filename: runtimePath });
+    }
+    return createRuntimeMatrixClient(clientOptions);
+  }
+
+  #namespace<K extends keyof MatrixClient>(name: K): MatrixClient[K] {
+    return createAsyncNamespace(async () => (await this.#runtime())[name]) as MatrixClient[K];
+  }
+}
+
+function createAsyncNamespace<T>(load: () => Promise<T>): T {
+  const build = (path: string[]): unknown =>
+    new Proxy(async () => undefined, {
+      apply: async (_target, _thisArg, args) => {
+        let parent: unknown = await load();
+        for (const key of path.slice(0, -1)) {
+          parent = (parent as Record<string, unknown>)[key];
+        }
+        const value = (parent as Record<string, unknown>)[path[path.length - 1] ?? ""];
+        if (typeof value !== "function") return value;
+        return value.apply(parent, args);
+      },
+      get: (_target, prop) => {
+        if (typeof prop !== "string") return undefined;
+        return build([...path, prop]);
+      },
+    });
+  return build([]) as T;
 }
 
 async function loadMatrixCoreFromNodePackage(

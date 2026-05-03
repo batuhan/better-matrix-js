@@ -1,7 +1,6 @@
 import type { MatrixSession } from "./types";
 
 export interface MatrixLoginOptions {
-  deviceId?: string;
   fetch?: typeof fetch;
   homeserver: string;
   initialDeviceDisplayName?: string;
@@ -31,14 +30,12 @@ export function createMatrixLogin(options: MatrixLoginOptions): MatrixLogin {
           type: "m.id.user",
           user: login.username,
         },
-        ...(options.deviceId ? { device_id: options.deviceId } : {}),
         initial_device_display_name: options.initialDeviceDisplayName ?? "Matrix",
         password: login.password,
         type: "m.login.password",
       }),
     token: (login) =>
       matrixLoginRequest(fetchImpl, options.homeserver, {
-        ...(options.deviceId ? { device_id: options.deviceId } : {}),
         initial_device_display_name: options.initialDeviceDisplayName ?? "Matrix",
         token: login.token,
         type: login.type ?? "m.login.token",

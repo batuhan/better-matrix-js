@@ -29,7 +29,6 @@ describe("createMatrixClient", () => {
       wasmModule: {} as WebAssembly.Module,
     });
 
-    await client.connect();
     await client.messages.send({
       html: "<strong>Hello</strong>",
       mentions: { userIds: ["@alice:example.com"] },
@@ -78,8 +77,7 @@ describe("createMatrixClient", () => {
       wasmModule: {} as WebAssembly.Module,
     });
     const listener = vi.fn();
-    client.events.on(listener);
-    await client.connect();
+    const sub = await client.subscribe({}, listener);
 
     globalThis.__matrixCoreEmit?.(
       "core-1",
@@ -115,11 +113,13 @@ describe("createMatrixClient", () => {
         threadRoot: "$thread",
       })
     );
+    await sub.stop();
   });
 
-  it("delegates sync loop lifetime to the runtime", async () => {
+  it("delegates subscription lifetime to the runtime", async () => {
     const calls = installRuntime({
       init: { deviceId: "DEVICE", userId: "@bot:example.com" },
+      sync_once: {},
       start_sync: {},
       stop_sync: {},
     });
@@ -128,13 +128,13 @@ describe("createMatrixClient", () => {
       token: "token",
       wasmModule: {} as WebAssembly.Module,
     });
-    await client.connect();
+    const sub = await client.subscribe({ kind: "message" }, () => undefined);
+    await sub.catchUp();
+    await sub.stop();
 
-    await client.sync.start({ retryDelayMs: 250, timeoutMs: 12_345 });
-    await client.sync.stop();
-
-    expect(calls.map((call) => call.operation)).toEqual(["init", "start_sync", "stop_sync"]);
-    expect(calls[1]?.payload).toEqual({ retryDelayMs: 250, timeoutMs: 12_345 });
+    expect(calls.map((call) => call.operation)).toEqual(["init", "start_sync", "sync_once", "stop_sync"]);
+    expect(calls[1]?.payload).toEqual({});
+    expect(calls[2]?.payload).toEqual({ replayMissed: true });
   });
 
   it("maps the public crypto status API to the runtime contract", async () => {
@@ -155,8 +155,6 @@ describe("createMatrixClient", () => {
       token: "token",
       wasmModule: {} as WebAssembly.Module,
     });
-
-    await client.connect();
 
     await expect(client.crypto.status()).resolves.toEqual({
       deviceId: "DEVICE",
@@ -185,7 +183,6 @@ describe("createMatrixClient", () => {
       wasmModule: {} as WebAssembly.Module,
     });
 
-    await client.connect();
     await expect(client.users.getOwnDisplayName()).resolves.toEqual({ displayName: "Bot", raw: {} });
     await client.users.setOwnDisplayName({ displayName: "New Bot" });
     await expect(client.users.getOwnAvatarUrl()).resolves.toEqual({ avatarUrl: "mxc://example/avatar" });
@@ -213,8 +210,6 @@ describe("createMatrixClient", () => {
       token: "token",
       wasmModule: {} as WebAssembly.Module,
     });
-    await client.connect();
-
     await client.streams.send({
       roomId: "!room:example.com",
       stream: chunks("hel", "lo"),
@@ -252,8 +247,6 @@ describe("createMatrixClient", () => {
       token: "token",
       wasmModule: {} as WebAssembly.Module,
     });
-    await client.connect();
-
     await client.streams.send({
       roomId: "!room:example.com",
       stream: chunks("hel", { text: "lo", type: "markdown_text" }),
@@ -314,8 +307,6 @@ describe("createMatrixClient", () => {
       token: "token",
       wasmModule: {} as WebAssembly.Module,
     });
-    await client.connect();
-
     await client.streams.send({
       roomId: "!room:example.com",
       stream: chunks("hello"),

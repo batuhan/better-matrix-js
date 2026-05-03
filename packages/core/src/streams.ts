@@ -194,7 +194,8 @@ function isBeeperHomeserver(homeserverUrl: string): boolean {
 }
 
 function supportsBeeperFeatures(options: MatrixClientOptions): boolean {
-  return options.beeper ?? isBeeperHomeserver(options.homeserver);
+  const homeserver = options.account?.homeserver ?? options.homeserver;
+  return options.beeper ?? (homeserver ? isBeeperHomeserver(homeserver) : false);
 }
 
 function streamChunkText(chunk: string | Record<string, unknown>): string {
