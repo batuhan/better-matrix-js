@@ -20,9 +20,21 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./helpers": {
+      "types": "./dist/helpers.d.ts",
+      "import": "./dist/helpers.js"
+    },
+    "./login": {
+      "types": "./dist/login.d.ts",
+      "import": "./dist/login.js"
+    },
     "./node": {
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
     },
     "./matrix-core.wasm": "./dist/matrix-core.wasm",
     "./wasm_exec.js": "./dist/wasm_exec.js"

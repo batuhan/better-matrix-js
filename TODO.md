@@ -29,8 +29,8 @@ No backward compatibility is required. Prefer deleting old API shapes and duplic
   - [x] `client.toDevice.*`
   - [x] `client.receipts.*`
   - [x] `client.raw.request(...)`
-- [ ] Confirm every public namespace has one canonical method name per operation and no aliases.
-- [ ] Audit package exports so there are no convenience barrel imports inside package source.
+- [x] Confirm every public namespace has one canonical method name per operation and no aliases.
+- [x] Audit package exports so there are no convenience barrel imports inside package source.
 
 ## Boot, Account, And Login
 
@@ -211,19 +211,19 @@ No backward compatibility is required. Prefer deleting old API shapes and duplic
 
 - [x] Node entrypoint lazily loads packaged WASM.
 - [x] Generic entrypoint still accepts `wasmBytes`, `wasmModule`, or `wasmUrl`.
-- [ ] Node smoke against packaged build after API migration.
+- [x] Node smoke against packaged build after API migration.
 - [ ] Browser smoke with IndexedDB and WASM asset.
 - [ ] Cloudflare Worker smoke with Durable Object store and WASM.
 - [ ] Confirm no Node-only imports leak into browser/core entrypoint.
-- [ ] Confirm Node helper exports are available from `better-matrix-js/node`.
-- [ ] Confirm package exports support direct helper imports if needed.
+- [x] Confirm Node helper exports are available from `better-matrix-js/node`.
+- [x] Confirm package exports support direct helper imports if needed.
 
 ## AI Streaming
 
 - [x] Core accepts generic async iterable text/delta input.
 - [x] AI-specific helper package exists separately.
-- [ ] Confirm optional AI helper has no required runtime dependency on AI SDK.
-- [ ] Add type-only/dev import audit.
+- [x] Confirm optional AI helper has no required runtime dependency on AI SDK.
+- [x] Add type-only/dev import audit.
 - [x] Add streaming tests for generic string chunks, text deltas, markdown chunks, and empty streams.
 
 ## Public Documentation

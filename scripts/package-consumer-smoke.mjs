@@ -82,12 +82,16 @@ try {
       "--eval",
       `
         import * as core from "better-matrix-js";
+        import * as helpers from "better-matrix-js/helpers";
+        import * as login from "better-matrix-js/login";
         import * as node from "better-matrix-js/node";
         import * as cloudflare from "@better-matrix-js/cloudflare";
         import * as adapter from "@better-matrix-js/chat-adapter";
 
         const checks = {
           core: ["createMatrixClient", "createMatrixLogin"].every((key) => key in core),
+          helpers: ["onMessage", "onReaction", "onInvite", "onRawEvent"].every((key) => key in helpers),
+          login: ["createMatrixLogin"].every((key) => key in login),
           node: ["createMatrixClient"].every((key) => key in node),
           cloudflare: ["createCloudflareKVMatrixStore", "createDurableObjectMatrixStore", "MatrixSyncDurableObject"].every((key) => key in cloudflare),
           adapter: ["createMatrixAdapter", "MatrixAdapter", "MatrixFormatConverter"].every((key) => key in adapter),
