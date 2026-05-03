@@ -49,7 +49,7 @@ export class MatrixClientObject {
     }));
     const core = await this.corePromise;
     if (this.env.MATRIX_ACCESS_TOKEN && this.env.MATRIX_HOMESERVER_URL) {
-      this.initPromise ??= core.connect();
+      this.initPromise ??= core.boot();
       await this.initPromise;
     }
     return core;
