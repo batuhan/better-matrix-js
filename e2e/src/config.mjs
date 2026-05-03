@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 export const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 export const SDK_ROOT = process.env.MATRIX_E2E_SDK_ROOT
   ? resolve(process.env.MATRIX_E2E_SDK_ROOT)
-  : resolve(ROOT, "../matrix-chat-sdk");
+  : resolve(ROOT, "..");
 export const OUT_DIR = process.env.MATRIX_E2E_OUT_DIR
   ? resolve(process.env.MATRIX_E2E_OUT_DIR)
   : resolve(ROOT, ".out");

@@ -1,4 +1,4 @@
-# better-matrix-js
+# easymatrix
 
 A TypeScript Matrix SDK that runs anywhere. Built on `mautrix-go` + `goolm` compiled to WebAssembly. **E2EE works out of the box.** No `matrix-js-sdk`, no Rust sidecar, no Node FFI.
 
@@ -6,22 +6,22 @@ A TypeScript Matrix SDK that runs anywhere. Built on `mautrix-go` + `goolm` comp
 
 | Package | What it does |
 | --- | --- |
-| [`better-matrix-js`](packages/core) | Matrix core: login, sync, rooms, messages, reactions, threads, media, E2EE. |
-| [`@better-matrix-js/chat-adapter`](packages/chat-adapter) | Build Matrix bots using the [Chat SDK](https://www.npmjs.com/package/chat). |
-| [`@better-matrix-js/ai-sdk`](packages/ai-sdk) | Pipe AI SDK streams into Matrix messages. |
-| [`@better-matrix-js/state-file`](packages/state-file) · [`-sqlite`](packages/state-sqlite) · [`-indexeddb`](packages/state-indexeddb) · [`-memory`](packages/state-memory) · [`-simple`](packages/state-simple) | State adapters for Node, browsers, and custom backends. |
+| [`easymatrix`](packages/core) | Matrix core: login, sync, rooms, messages, reactions, threads, media, E2EE. |
+| [`@easymatrix/chat-adapter`](packages/chat-adapter) | Build Matrix bots using the [Chat SDK](https://www.npmjs.com/package/chat). |
+| [`@easymatrix/ai-sdk`](packages/ai-sdk) | Pipe AI SDK streams into Matrix messages. |
+| [`@easymatrix/state-file`](packages/state-file) · [`-sqlite`](packages/state-sqlite) · [`-indexeddb`](packages/state-indexeddb) · [`-memory`](packages/state-memory) · [`-simple`](packages/state-simple) | State adapters for Node, browsers, and custom backends. |
 
 ## Install
 
 ```sh
-npm install better-matrix-js @better-matrix-js/state-sqlite
+npm install easymatrix @easymatrix/state-sqlite
 ```
 
 ## A Node bot in 20 lines
 
 ```ts
-import { createMatrixClient, onMessage } from "better-matrix-js/node";
-import { createSQLiteMatrixStore } from "@better-matrix-js/state-sqlite";
+import { createMatrixClient, onMessage } from "easymatrix/node";
+import { createSQLiteMatrixStore } from "@easymatrix/state-sqlite";
 
 const client = createMatrixClient({
   homeserver: "https://matrix.example.org",
@@ -47,12 +47,12 @@ That's a working E2EE-capable Matrix bot. The first awaited method boots WASM, s
 Same bot, written as a [Chat SDK](https://www.npmjs.com/package/chat) adapter — gets you Slack/Discord/Teams parity and shared bot logic across platforms:
 
 ```sh
-npm install chat better-matrix-js @better-matrix-js/chat-adapter
+npm install chat easymatrix @easymatrix/chat-adapter
 ```
 
 ```ts
 import { Chat } from "chat";
-import { createMatrixAdapter } from "@better-matrix-js/chat-adapter";
+import { createMatrixAdapter } from "@easymatrix/chat-adapter";
 
 const matrix = createMatrixAdapter({
   homeserver: "https://matrix.example.org",
@@ -98,6 +98,9 @@ pnpm build       # TS + Go WASM
 pnpm test
 pnpm typecheck
 ```
+
+Live Matrix smoke tests live in [`e2e`](e2e) and are opt-in because they need
+real accounts.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the release flow.
 

@@ -17,7 +17,7 @@ test("core: unencrypted room metadata, messages, and media stay plain", async ()
   try {
     await Promise.all([sync(bot, 2), sync(peer, 2)]);
 
-    const name = `better-matrix-js unencrypted ${Date.now()}`;
+    const name = `easymatrix unencrypted ${Date.now()}`;
     const topic = "unencrypted live e2e coverage";
     const room = await botRest.createRoom({
       invite: [peer.userId],

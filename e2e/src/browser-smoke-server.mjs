@@ -22,18 +22,18 @@ const html = `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>better-matrix-js browser smoke</title>
+    <title>easymatrix browser smoke</title>
     <script src="/sdk/packages/core/dist/wasm_exec.js"></script>
   </head>
   <body>
     <main>
-      <h1>better-matrix-js browser smoke</h1>
+      <h1>easymatrix browser smoke</h1>
       <pre id="status">starting</pre>
     </main>
     <script type="importmap">
       {
         "imports": {
-          "better-matrix-js": "/sdk/packages/core/dist/index.js"
+          "easymatrix": "/sdk/packages/core/dist/index.js"
         }
       }
     </script>
@@ -46,8 +46,8 @@ const html = `<!doctype html>
       const status = document.querySelector("#status");
       const params = new URLSearchParams(location.search);
       const mode = params.get("mode") ?? "fresh";
-      const sessionKey = "better-matrix-js-browser-session-" + account.username;
-      const historyKey = "better-matrix-js-browser-history-" + account.username;
+      const sessionKey = "easymatrix-browser-session-" + account.username;
+      const historyKey = "easymatrix-browser-history-" + account.username;
       const log = (message, data) => {
         status.textContent += "\\n" + message + (data ? " " + JSON.stringify(data) : "");
       };
@@ -60,7 +60,7 @@ const html = `<!doctype html>
       async function loginFreshDevice() {
         return createMatrixLogin({
           homeserver: account.homeserverUrl,
-          initialDeviceDisplayName: "better-matrix-js browser smoke " + mode
+          initialDeviceDisplayName: "easymatrix browser smoke " + mode
         }).token({
           token: account.loginToken,
           type: "org.matrix.login.jwt"
@@ -77,7 +77,7 @@ const html = `<!doctype html>
         return createMatrixClient({
           account: session,
           recoveryKey: account.recoveryKey,
-          store: createIndexedDBMatrixStore({ databaseName: "better-matrix-js-browser-smoke-" + account.username + "-" + session.deviceId }),
+          store: createIndexedDBMatrixStore({ databaseName: "easymatrix-browser-smoke-" + account.username + "-" + session.deviceId }),
           wasmBytes
         });
       }
@@ -123,7 +123,7 @@ const html = `<!doctype html>
                 stateKey: "",
                 type: "m.room.encryption"
               }],
-              name: "better-matrix-js browser smoke " + Date.now(),
+              name: "easymatrix browser smoke " + Date.now(),
               preset: "private_chat"
             });
             const sent = await client.messages.send({

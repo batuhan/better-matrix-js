@@ -5,10 +5,10 @@ import { spawnSync } from "node:child_process";
 import assert from "node:assert/strict";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const outDir = resolve(root, "e2e-scripts/.out/cloudflare-runtime-smoke");
+const outDir = resolve(root, "e2e/.out/cloudflare-runtime-smoke");
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? "2d6696feb60377216e949e7a39f904a1";
 const name = process.env.BMJS_CLOUDFLARE_SMOKE_NAME ??
-  `better-matrix-js-cf-smoke-${new Date().toISOString().replaceAll(/\D/g, "").slice(0, 14)}`;
+  `easymatrix-cf-smoke-${new Date().toISOString().replaceAll(/\D/g, "").slice(0, 14)}`;
 
 await mkdir(outDir, { recursive: true });
 const configPath = resolve(outDir, "wrangler.jsonc");
@@ -31,7 +31,7 @@ await writeFile(configPath, JSON.stringify({
   name,
   vars: {
     MATRIX_SYNC_WEBHOOK_URL: "https://example.invalid/matrix/webhook",
-    SMOKE_WEBHOOK_SECRET: "better-matrix-js-cloudflare-runtime-smoke",
+    SMOKE_WEBHOOK_SECRET: "easymatrix-cloudflare-runtime-smoke",
   },
   workers_dev: true,
 }, null, 2));
