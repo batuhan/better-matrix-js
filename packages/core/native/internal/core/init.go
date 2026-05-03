@@ -147,7 +147,7 @@ func resolveStartupSyncPlan(req MatrixCoreInitOptions, storedNextBatch string) s
 
 	mode := req.InitialSyncMode
 	if mode == "" {
-		mode = "persisted"
+		mode = "latest"
 	}
 	if req.CatchUpOnStart != nil {
 		if *req.CatchUpOnStart {
@@ -173,18 +173,10 @@ func resolveStartupSyncPlan(req MatrixCoreInitOptions, storedNextBatch string) s
 			skipNextSync:           true,
 		}
 	default:
-		if storedNextBatch != "" {
-			return startupSyncPlan{
-				cursorSource:           "stored",
-				loadPendingDecryptions: true,
-				nextBatch:              storedNextBatch,
-				skipNextSync:           false,
-			}
-		}
 		return startupSyncPlan{
-			cursorSource:           "latest",
+			cursorSource:           cursorSource(storedNextBatch, "stored_latest", "latest"),
 			loadPendingDecryptions: false,
-			nextBatch:              "",
+			nextBatch:              storedNextBatch,
 			skipNextSync:           true,
 		}
 	}

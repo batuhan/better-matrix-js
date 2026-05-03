@@ -56,8 +56,8 @@ No backward compatibility is required. Prefer deleting old API shapes and duplic
 - [x] Add tests for multiple subscribers sharing one sync runner.
 - [x] Add tests for stopping one subscriber while another remains active.
 - [x] Add tests for handler failures and `done` rejection behavior.
-- [ ] Add tests that `boot()` does not emit app events.
-- [ ] Add tests that default subscription is future-only with a reused stored cursor.
+- [x] Add tests that `boot()` does not emit app events.
+- [x] Add tests that default subscription is future-only with a reused stored cursor.
 - [x] Add tests that `catchUp()` emits missed events and only through that subscription.
 
 ## Raw Event Access

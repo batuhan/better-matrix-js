@@ -269,6 +269,40 @@ describe("createMatrixClient", () => {
     await expect(second.done).resolves.toBeUndefined();
   });
 
+  it("boots without starting sync or delivering app events", async () => {
+    const calls = installRuntime({
+      init: { deviceId: "DEVICE", userId: "@bot:example.com" },
+    });
+    const client = createMatrixClient({
+      homeserver: "https://matrix.example.com",
+      token: "token",
+      wasmModule: {} as WebAssembly.Module,
+    });
+
+    await expect(client.boot()).resolves.toEqual({
+      deviceId: "DEVICE",
+      userId: "@bot:example.com",
+    });
+    globalThis.__matrixCoreEmit?.(
+      "core-1",
+      JSON.stringify({
+        event: {
+          body: "Ignored",
+          content: { body: "Ignored", msgtype: "m.text" },
+          eventId: "$ignored",
+          msgtype: "m.text",
+          raw: {},
+          roomId: "!room:example.com",
+          sender: "@alice:example.com",
+          type: "m.room.message",
+        },
+        type: "message",
+      })
+    );
+
+    expect(calls.map((call) => call.operation)).toEqual(["init"]);
+  });
+
   it("rejects subscription done when a handler fails", async () => {
     installRuntime({
       init: { deviceId: "DEVICE", userId: "@bot:example.com" },
