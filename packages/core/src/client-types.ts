@@ -91,6 +91,7 @@ export interface MatrixClient {
   typing: MatrixTyping;
   toDevice: MatrixToDevice;
   users: MatrixUsers;
+  logout(): Promise<void>;
   whoami(): Promise<MatrixWhoami>;
 }
 

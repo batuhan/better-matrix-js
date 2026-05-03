@@ -117,3 +117,25 @@ func TestStandardMatrixHelpersUseExpectedEndpoints(t *testing.T) {
 		}
 	}
 }
+
+func TestLogoutUsesMatrixLogoutEndpoint(t *testing.T) {
+	var seen string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.Method + " " + r.URL.Path
+		if r.Method == http.MethodPost && r.URL.Path == "/_matrix/client/v3/logout" {
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	core := New(nil)
+	core.client, _ = mautrix.NewClient(server.URL, id.UserID("@alice:example"), "token")
+	if _, err := core.handleLogout(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if seen != "POST /_matrix/client/v3/logout" {
+		t.Fatalf("unexpected logout request %q", seen)
+	}
+}

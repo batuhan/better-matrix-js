@@ -323,6 +323,22 @@ describe("createMatrixClient", () => {
     expect(calls[1]?.payload).toEqual({});
   });
 
+  it("maps logout to the runtime contract", async () => {
+    const calls = installRuntime({
+      init: { deviceId: "DEVICE", userId: "@bot:example.com" },
+      logout: {},
+    });
+    const client = createMatrixClient({
+      homeserver: "https://matrix.example.com",
+      token: "token",
+      wasmModule: {} as WebAssembly.Module,
+    });
+
+    await client.logout();
+
+    expect(calls.map((call) => call.operation)).toEqual(["init", "logout"]);
+  });
+
   it("maps the public own profile API to the runtime contract", async () => {
     const calls = installRuntime({
       get_own_avatar_url: { avatarUrl: "mxc://example/avatar" },

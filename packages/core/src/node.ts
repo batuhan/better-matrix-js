@@ -108,6 +108,10 @@ class NodeMatrixClient implements MatrixClient {
     return (await this.#runtime()).whoami();
   }
 
+  async logout() {
+    return (await this.#runtime()).logout();
+  }
+
   async #runtime(): Promise<MatrixClient> {
     if (!this.#client) {
       this.#clientPromise ??= this.#createRuntime();

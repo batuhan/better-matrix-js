@@ -240,6 +240,15 @@ func (c *Core) handleWhoami(ctx context.Context) ([]byte, error) {
 	return json.Marshal(MatrixWhoami{UserID: cli.UserID.String(), DeviceID: cli.DeviceID.String()})
 }
 
+func (c *Core) handleLogout(ctx context.Context) ([]byte, error) {
+	cli, err := c.requireClient()
+	if err != nil {
+		return nil, err
+	}
+	_, err = cli.Logout(ctx)
+	return c.emptyIfNil(err)
+}
+
 func (c *Core) setupCrypto(ctx context.Context, req MatrixCoreInitOptions) error {
 	cli, err := c.requireClient()
 	if err != nil {

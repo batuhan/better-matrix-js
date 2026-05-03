@@ -11,6 +11,8 @@ const (
 	opInit = "init"
 	// ts:operation whoami whoami - MatrixWhoami
 	opWhoami = "whoami"
+	// ts:operation logout logout - void
+	opLogout = "logout"
 	// ts:operation getCryptoStatus get_crypto_status - MatrixCryptoStatus
 	opGetCryptoStatus = "get_crypto_status"
 	// ts:operation rawRequest raw_request MatrixRawRequestOptions MatrixRawRequestResult

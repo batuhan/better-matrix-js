@@ -82,6 +82,7 @@ export interface MatrixCoreOperations {
   stopSync(): Promise<void>;
   init(options: MatrixCoreInitOptions): Promise<MatrixWhoami>;
   whoami(): Promise<MatrixWhoami>;
+  logout(): Promise<void>;
   getCryptoStatus(): Promise<MatrixCryptoStatus>;
   rawRequest(options: MatrixRawRequestOptions): Promise<MatrixRawRequestResult>;
   applySyncResponse(options: MatrixApplySyncResponseOptions): Promise<void>;
@@ -157,6 +158,10 @@ export abstract class MatrixCoreOperationCaller implements MatrixCoreOperations 
 
   whoami(): Promise<MatrixWhoami> {
     return this.call<MatrixWhoami>("whoami");
+  }
+
+  logout(): Promise<void> {
+    return this.call<void>("logout");
   }
 
   getCryptoStatus(): Promise<MatrixCryptoStatus> {

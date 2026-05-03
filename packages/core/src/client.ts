@@ -290,6 +290,10 @@ class DefaultMatrixClient implements MatrixClient {
     return this.#withCore((core) => core.whoami());
   }
 
+  logout(): Promise<void> {
+    return this.#withCore((core) => core.logout());
+  }
+
   async #boot(): Promise<MatrixWhoami> {
     const account = this.#accountOptions();
     if (!this.#core) {

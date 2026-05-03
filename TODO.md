@@ -39,7 +39,7 @@ No backward compatibility is required. Prefer deleting old API shapes and duplic
 - [x] `whoami()` boots if needed and confirms account identity.
 - [x] Generic password/token login returns `MatrixAccount`.
 - [x] Remove public login option for caller-selected `deviceId`.
-- [ ] Add logout helper.
+- [x] Add logout helper.
 - [ ] Add token/JWT login coverage for returned `MatrixAccount`.
 - [ ] Persist/use account metadata without making it required for runtime identity.
 - [ ] Add Beeper signup/login flow object under `client.beeper` or a Beeper login helper package.

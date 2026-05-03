@@ -76,6 +76,8 @@ func (c *Core) Handle(ctx context.Context, op string, payload []byte) ([]byte, e
 		return c.handleInit(ctx, payload)
 	case opWhoami:
 		return c.handleWhoami(ctx)
+	case opLogout:
+		return c.handleLogout(ctx)
 	case opGetCryptoStatus:
 		return c.handleGetCryptoStatus()
 	case opRawRequest:
