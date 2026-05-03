@@ -431,6 +431,8 @@ export interface MatrixInviteEvent {
 export interface MatrixSyncEvent {
   class: "state" | "ephemeral" | "accountData" | "toDevice" | "membership" | "redaction" | "raw" | string;
   content: { [key: string]: unknown};
+  decrypted?: boolean;
+  encrypted?: boolean;
   eventId?: string;
   nextBatch?: string;
   originServerTs?: number /* int64 */;
