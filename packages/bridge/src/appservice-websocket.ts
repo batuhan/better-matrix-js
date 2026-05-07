@@ -5,13 +5,17 @@ import type { BridgeLogger } from "./types";
 export interface AppserviceWebsocketOptions {
   appservice: MatrixAppserviceInitOptions;
   dispatch(event: MatrixClientEvent): Promise<unknown>;
+  handleHTTPProxy?(request: HTTPProxyRequest): Promise<HTTPProxyResponse | null>;
   log: BridgeLogger;
+  onOpen?(): void | Promise<void>;
 }
 
 export class AppserviceWebsocket {
   readonly #appservice: MatrixAppserviceInitOptions;
   readonly #dispatch: (event: MatrixClientEvent) => Promise<unknown>;
+  readonly #handleProxy: ((request: HTTPProxyRequest) => Promise<HTTPProxyResponse | null>) | undefined;
   readonly #log: BridgeLogger;
+  readonly #onOpen: (() => void | Promise<void>) | undefined;
   #closed = false;
   #pingTimer: NodeJS.Timeout | null = null;
   #reconnectTimer: NodeJS.Timeout | null = null;
@@ -20,7 +24,9 @@ export class AppserviceWebsocket {
   constructor(options: AppserviceWebsocketOptions) {
     this.#appservice = options.appservice;
     this.#dispatch = options.dispatch;
+    this.#handleProxy = options.handleHTTPProxy;
     this.#log = options.log;
+    this.#onOpen = options.onOpen;
   }
 
   start(): void {
@@ -52,6 +58,9 @@ export class AppserviceWebsocket {
     socket.on("open", () => {
       this.#log("info", "appservice_websocket_open", { url });
       this.#pingTimer = setInterval(() => this.#ping(), 180_000);
+      void Promise.resolve(this.#onOpen?.()).catch((error: unknown) => {
+        this.#log("warn", "appservice_websocket_open_handler_failed", { error });
+      });
     });
     socket.on("message", (data) => {
       void this.#handleMessage(data).catch((error: unknown) => {
@@ -63,7 +72,7 @@ export class AppserviceWebsocket {
       this.#pingTimer = null;
       this.#socket = null;
       if (this.#closed) return;
-      this.#log("warn", "appservice_websocket_closed", { code, reason: reason.toString() });
+      this.#log("warn", "appservice_websocket_closed", { code, reconnectMs: 2_000, reason: reason.toString() });
       this.#reconnectTimer = setTimeout(() => this.#connect(), 2_000);
     });
     socket.on("error", (error) => {
@@ -73,6 +82,12 @@ export class AppserviceWebsocket {
 
   async #handleMessage(data: WebSocket.RawData): Promise<void> {
     const message = JSON.parse(data.toString()) as WebsocketMessage;
+    this.#log("debug", "appservice_websocket_message", {
+      command: message.command ?? "transaction",
+      eventCount: message.events?.length,
+      id: message.id,
+      txnId: message.txn_id,
+    });
     if (message.command === "connect") return;
     if (message.command === "ping") {
       this.#send(messageResponse(message, true, message.data ?? { timestamp: Date.now() }));
@@ -81,13 +96,21 @@ export class AppserviceWebsocket {
     if (!message.command || message.command === "transaction") {
       for (const raw of message.events ?? []) {
         const event = rawMatrixEvent(raw);
+        this.#log("debug", "appservice_websocket_transaction_event", {
+          eventId: raw.event_id,
+          roomId: raw.room_id,
+          sender: raw.sender,
+          type: raw.type,
+        });
         if (event) await this.#dispatch(event);
       }
       this.#send(messageResponse(message, true, { txn_id: message.txn_id }));
       return;
     }
     if (message.command === "http_proxy") {
-      this.#send(messageResponse(message, true, await this.#handleHTTPProxy(message.data)));
+      const response = await this.#handleHTTPProxy(message.data);
+      this.#log("debug", "appservice_websocket_http_proxy_response", { id: message.id, status: response.status });
+      this.#send(messageResponse(message, true, response));
       return;
     }
     this.#send(messageResponse(message, false, { code: "M_UNKNOWN", message: `unknown websocket command ${message.command}` }));
@@ -95,12 +118,22 @@ export class AppserviceWebsocket {
 
   async #handleHTTPProxy(data: unknown): Promise<HTTPProxyResponse> {
     const request = data as HTTPProxyRequest;
+    this.#log("debug", "appservice_websocket_http_proxy_request", {
+      method: request.method ?? "GET",
+      path: request.path ?? "",
+    });
+    const handled = await this.#handleProxy?.(request);
+    if (handled) return handled;
     const path = request.path ?? "";
     const method = request.method ?? "GET";
     const transactionMatch = /^\/?_matrix\/app\/v1\/transactions\/([^/]+)$/.exec(path);
     if (method === "PUT" && transactionMatch) {
       const transaction = objectValue(request.body) ?? {};
       const events = Array.isArray(transaction.events) ? transaction.events : [];
+      this.#log("debug", "appservice_websocket_http_transaction", {
+        eventCount: events.length,
+        txnId: transactionMatch[1],
+      });
       for (const raw of events) {
         const event = rawMatrixEvent(raw as RawMatrixEvent);
         if (event) await this.#dispatch(event);
@@ -124,9 +157,14 @@ export class AppserviceWebsocket {
     });
   }
 
-  #send(message: WebsocketRequest | null): void {
-    if (!message || this.#socket?.readyState !== WebSocket.OPEN) return;
+  send(command: string, data: unknown): boolean {
+    return this.#send({ command, data });
+  }
+
+  #send(message: WebsocketRequest | null): boolean {
+    if (!message || this.#socket?.readyState !== WebSocket.OPEN) return false;
     this.#socket.send(JSON.stringify(message));
+    return true;
   }
 }
 
@@ -144,7 +182,7 @@ interface WebsocketMessage {
   txn_id?: string;
 }
 
-interface HTTPProxyRequest {
+export interface HTTPProxyRequest {
   body?: unknown;
   escaped_path?: boolean;
   headers?: Record<string, string[]>;
@@ -153,7 +191,7 @@ interface HTTPProxyRequest {
   query?: string;
 }
 
-interface HTTPProxyResponse {
+export interface HTTPProxyResponse {
   body?: unknown;
   headers: Record<string, string[]>;
   status: number;

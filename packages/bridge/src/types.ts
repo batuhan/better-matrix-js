@@ -545,7 +545,8 @@ export interface CreateBeeperBridgeOptions extends Omit<CreateBridgeOptions, "ap
   bridge: string;
   bridgeType?: string;
   getOnly?: boolean;
-  matrix: Partial<Omit<BridgeMatrixConfig, "account">> & Pick<BridgeMatrixConfig, "store">;
+  matrix?: Partial<Omit<BridgeMatrixConfig, "account">>;
+  store?: MatrixStore;
 }
 
 export interface BridgeMatrixConfig extends Pick<MatrixClientOptions, "account" | "beeper" | "fetch" | "homeserver" | "logger" | "pickleKey" | "randomBytes" | "recoveryKey" | "store" | "token" | "verifyRecoveryOnStart" | "wasmBytes" | "wasmModule" | "wasmUrl"> {

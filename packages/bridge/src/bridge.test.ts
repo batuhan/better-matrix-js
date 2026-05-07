@@ -383,6 +383,56 @@ describe("RuntimeBridge", () => {
       path: expect.stringContaining("/rooms/!created%3Aexample/send/m.room.message/pickle-bridge-"),
     });
   });
+
+  it("sends management command replies through the appservice bot when registered", async () => {
+    const client = createFakeMatrixClient();
+    const connector = {
+      ...createFakeConnector(createFakeNetworkAPI()),
+      handleCommand: vi.fn(async () => ({ handled: true, text: "pong" })),
+    };
+    const bridge = new RuntimeBridge({
+      appservice: {
+        homeserver: "https://matrix.example",
+        homeserverDomain: "example",
+        registration: {
+          asToken: "as",
+          hsToken: "hs",
+          id: "test",
+          namespaces: { users: [{ exclusive: true, regex: "@test_.*:example" }] },
+          senderLocalpart: "testbot",
+          url: "http://localhost:29300",
+        },
+      },
+      connector,
+      matrix: matrixConfig(),
+    }, client);
+
+    await bridge.start();
+    await bridge.dispatchMatrixEvent({
+      attachments: [],
+      class: "message",
+      content: { body: "test ping", msgtype: "m.text" },
+      edited: false,
+      encrypted: false,
+      eventId: "$cmd",
+      kind: "message",
+      messageType: "m.text",
+      raw: {},
+      roomId: "!management:example",
+      sender: { isMe: false, userId: "@bridge:example" },
+      text: "test ping",
+      type: "m.room.message",
+    });
+
+    expect(client.appservice.sendMessage).toHaveBeenCalledWith({
+      content: { body: "pong", msgtype: "m.notice" },
+      roomId: "!management:example",
+      userId: "@testbot:example",
+    });
+    expect(client.raw.request).not.toHaveBeenCalledWith(expect.objectContaining({
+      path: expect.stringContaining("/rooms/!management%3Aexample/send/m.room.message/"),
+    }));
+  });
 });
 
 function matrixConfig(): BridgeMatrixConfig {

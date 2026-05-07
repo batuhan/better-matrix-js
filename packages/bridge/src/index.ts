@@ -18,7 +18,7 @@ export function createBridge(options: CreateNodeBridgeOptions): PickleBridge {
 }
 
 export async function createBeeperBridge(options: CreateNodeBeeperBridgeOptions): Promise<PickleBridge> {
-  const store = options.matrix?.store ?? createFileMatrixStore(defaultDataDir(options));
+  const store = options.store ?? options.matrix?.store ?? createFileMatrixStore(defaultDataDir(options));
   const matrix = {
     ...options.matrix,
     store,

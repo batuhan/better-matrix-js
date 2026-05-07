@@ -24,6 +24,7 @@ import type {
 
 export const LOGIN_ID = "dummy-login";
 export const PORTAL_ID = "dummy-room";
+export const DUMMY_CHAT_IDS = ["dummy-chat-alice", "dummy-chat-bob", "dummy-chat-carol"] as const;
 
 export interface DummyConnectorOptions {
   senderLocalpart?: string;
@@ -357,15 +358,13 @@ export class DummyNetworkAPI implements NetworkAPI {
   async fetchMessages(): Promise<FetchMessagesResponse> {
     return {
       hasMore: false,
-      messages: [
-        {
-          event: this.#remoteMessage({
-            body: "DummyBridge historical hello",
-            id: "dummy-history-1",
-            timestamp: Date.now() - 60_000,
-          }),
-        },
-      ],
+      messages: Array.from({ length: 5 }, (_, index) => ({
+        event: this.#remoteMessage({
+          body: `DummyBridge historical message ${index + 1}`,
+          id: `dummy-history-${index + 1}`,
+          timestamp: Date.now() - (5 - index) * 60_000,
+        }),
+      })),
     };
   }
 

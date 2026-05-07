@@ -1,6 +1,6 @@
 import { createMatrixClient } from "@beeper/pickle";
-import type { MatrixAppserviceBatchSendOptions, MatrixClient, MatrixClientEvent, MatrixMessageEvent, MatrixReactionEvent, MatrixSubscription, SentEvent } from "@beeper/pickle";
-import { AppserviceWebsocket } from "./appservice-websocket";
+import type { MatrixAppserviceBatchSendOptions, MatrixAppserviceInitOptions, MatrixClient, MatrixClientEvent, MatrixMessageEvent, MatrixReactionEvent, MatrixSubscription, SentEvent } from "@beeper/pickle";
+import { AppserviceWebsocket, type HTTPProxyRequest, type HTTPProxyResponse } from "./appservice-websocket";
 import { createBeeperAppServiceInit } from "./beeper";
 import type {
   BridgeContext,
@@ -53,6 +53,7 @@ import type {
   LoginProcessDisplayAndWait,
   LoginProcessUserInput,
   LoginProcessWithOverride,
+  LoginStep,
   LoginUserInput,
 } from "./types";
 
@@ -63,21 +64,26 @@ export function createBridge(options: CreateBridgeOptions): PickleBridge {
 }
 
 export async function createBeeperBridge(options: CreateBeeperBridgeOptions): Promise<PickleBridge> {
+  if (!options.store) throw new Error("createBeeperBridge requires store outside the Node entrypoint");
   const matrix = {
     ...options.matrix,
     account: options.account,
-    homeserver: options.matrix.homeserver ?? options.account.homeserver,
-    token: options.matrix.token ?? options.account.accessToken,
+    homeserver: options.matrix?.homeserver ?? options.account.homeserver,
+    store: options.store,
+    token: options.matrix?.token ?? options.account.accessToken,
   };
   return createBeeperBridgeWithClient({ ...options, matrix }, createMatrixClient(matrix));
 }
 
 export async function createBeeperBridgeWithClient(options: CreateBeeperBridgeOptions, client: MatrixClient): Promise<PickleBridge> {
+  const store = options.store ?? options.matrix?.store;
+  if (!store) throw new Error("createBeeperBridgeWithClient requires store");
   const matrix = {
     ...options.matrix,
     account: options.account,
-    homeserver: options.matrix.homeserver ?? options.account.homeserver,
-    token: options.matrix.token ?? options.account.accessToken,
+    homeserver: options.matrix?.homeserver ?? options.account.homeserver,
+    store,
+    token: options.matrix?.token ?? options.account.accessToken,
   };
   const appservice = await createBeeperAppServiceInit(beeperAppServiceOptions({
     address: options.address,
@@ -106,9 +112,11 @@ export class RuntimeBridge implements PickleBridge {
   readonly #ghosts = new Map<string, Ghost>();
   readonly #messageRequests = new Map<string, MessageRequest>();
   readonly #managementRooms = new Map<string, ManagementRoom>();
+  readonly #provisioningLogins = new Map<string, { nextStep: LoginStep; process: LoginProcess }>();
   readonly #portalsByKey = new Map<string, Portal>();
   readonly #portalsByRoom = new Map<string, Portal>();
   readonly #remoteEvents: Array<{ event: RemoteEvent; login: UserLogin }> = [];
+  readonly #userLogins = new Map<string, UserLogin>();
   readonly #matrixClient: MatrixClient;
   readonly #subscriptions = new Set<MatrixSubscription>();
   #appserviceWebsocket: AppserviceWebsocket | null = null;
@@ -116,6 +124,7 @@ export class RuntimeBridge implements PickleBridge {
   #context: BridgeContext | null = null;
   #drainPromise: Promise<void> | null = null;
   #started = false;
+  #ownerUserId: string | null = null;
   #ownUserId: string | null = null;
 
   constructor(options: CreateBridgeOptions, client: MatrixClient) {
@@ -137,9 +146,18 @@ export class RuntimeBridge implements PickleBridge {
     if (this.#started) return;
     await this.setBridgeState("starting");
     const whoami = await this.#matrixClient.boot();
+    this.#ownerUserId = whoami.userId;
     this.#ownUserId = whoami.userId;
+    defaultLogger("info", "bridge_matrix_booted", { userId: whoami.userId });
     if (this.#appserviceOptions) {
-      await this.#matrixClient.appservice.init(this.#appserviceOptions);
+      const result = await this.#matrixClient.appservice.init(this.#appserviceOptions);
+      defaultLogger("info", "bridge_appservice_initialized", {
+        botUserId: appserviceBotUserId(this.#appserviceOptions),
+        homeserver: this.#appserviceOptions.homeserver,
+        registrationId: this.#appserviceOptions.registration.id,
+        result,
+      });
+      this.#ownUserId = appserviceBotUserId(this.#appserviceOptions);
     }
     this.#context = this.#createContext();
     if ("validateConfig" in this.connector && typeof this.connector.validateConfig === "function") {
@@ -151,6 +169,7 @@ export class RuntimeBridge implements PickleBridge {
     this.#startAppserviceWebsocket();
     this.#started = true;
     await this.setBridgeState("running");
+    this.#sendCurrentBridgeStatus();
   }
 
   async stop(): Promise<void> {
@@ -267,9 +286,12 @@ export class RuntimeBridge implements PickleBridge {
     if (existing) return existing;
     const client = await this.connector.loadUserLogin(this.#requestContext(), login);
     login.client = client;
+    this.#userLogins.set(login.id, login);
     this.#networkClients.set(login.id, client);
     await this.#dataStore?.setUserLogin(login);
     await client.connect({ ...this.#requestContext(), login });
+    defaultLogger("info", "user_login_loaded", { loginId: login.id, remoteName: login.remoteName, userId: login.userId });
+    this.#sendCurrentBridgeStatus();
     return client;
   }
 
@@ -289,6 +311,8 @@ export class RuntimeBridge implements PickleBridge {
     this.#bridgeStatus = status;
     await this.#dataStore?.setBridgeStatus(status);
     await this.#dataStore?.setBridgeState(status.state);
+    defaultLogger("info", "bridge_state_updated", { state: status.state });
+    this.#sendCurrentBridgeStatus();
   }
 
   getGhost(id: string): Ghost | null {
@@ -419,6 +443,12 @@ export class RuntimeBridge implements PickleBridge {
     if (!this.#context) {
       throw new Error("Bridge has not been started");
     }
+    defaultLogger("debug", "matrix_event_received", {
+      eventId: "eventId" in event ? event.eventId : undefined,
+      kind: event.kind,
+      roomId: "roomId" in event ? event.roomId : undefined,
+      sender: "sender" in event ? event.sender.userId : undefined,
+    });
     if (event.kind === "message") {
       return this.#dispatchMatrixMessage(event);
     }
@@ -464,17 +494,80 @@ export class RuntimeBridge implements PickleBridge {
   }
 
   #startAppserviceWebsocket(): void {
-    if (!this.#appserviceOptions || hasPushURL(this.#appserviceOptions.registration.url)) return;
+    if (!this.#appserviceOptions) return;
+    if (hasPushURL(this.#appserviceOptions.registration.url)) {
+      defaultLogger("info", "appservice_websocket_skipped", { reason: "registration_url_is_push_url" });
+      return;
+    }
+    defaultLogger("info", "appservice_websocket_starting", { homeserver: this.#appserviceOptions.homeserver });
     this.#appserviceWebsocket = new AppserviceWebsocket({
       appservice: this.#appserviceOptions,
       dispatch: (event) => this.dispatchMatrixEvent(event),
+      handleHTTPProxy: (request) => this.#handleHTTPProxy(request),
       log: defaultLogger,
+      onOpen: () => this.#sendCurrentBridgeStatus(),
     });
     this.#appserviceWebsocket.start();
   }
 
+  async #handleHTTPProxy(request: HTTPProxyRequest): Promise<HTTPProxyResponse | null> {
+    const path = request.path ?? "";
+    const method = request.method ?? "GET";
+    defaultLogger("debug", "provisioning_http_request", { method, path });
+    if (method === "GET" && path === "/_matrix/provision/v3/capabilities") {
+      return jsonHTTPResponse(200, provisioningCapabilities(this.connector.getCapabilities()));
+    }
+    if (method === "GET" && path === "/_matrix/provision/v3/login/flows") {
+      return jsonHTTPResponse(200, { flows: this.connector.getLoginFlows() });
+    }
+    if (method === "GET" && path === "/_matrix/provision/v3/logins") {
+      return jsonHTTPResponse(200, { login_ids: Array.from(this.#networkClients.keys()) });
+    }
+    const startMatch = /^\/_matrix\/provision\/v3\/login\/start\/([^/]+)$/.exec(path);
+    if (method === "POST" && startMatch) {
+      const flowId = decodeURIComponent(startMatch[1] ?? "");
+      defaultLogger("info", "provisioning_login_start", { flowId });
+      const process = await this.createLogin({ id: this.#ownerUserId ?? this.#ownUserId ?? "" }, flowId);
+      const step = await process.start();
+      const loginId = randomID("login");
+      this.#provisioningLogins.set(loginId, { nextStep: step, process });
+      return jsonHTTPResponse(200, loginStepResponse(loginId, step));
+    }
+    const stepMatch = /^\/_matrix\/provision\/v3\/login\/step\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(path);
+    if (method === "POST" && stepMatch) {
+      const loginId = decodeURIComponent(stepMatch[1] ?? "");
+      const stepId = decodeURIComponent(stepMatch[2] ?? "");
+      const stepType = decodeURIComponent(stepMatch[3] ?? "");
+      const login = this.#provisioningLogins.get(loginId);
+      if (!login) return jsonHTTPResponse(404, matrixError("M_NOT_FOUND", "Login not found"));
+      if (login.nextStep.stepId !== stepId) return jsonHTTPResponse(400, matrixError("M_BAD_STATE", "Step ID does not match"));
+      if (login.nextStep.type !== stepType) return jsonHTTPResponse(400, matrixError("M_BAD_STATE", "Step type does not match"));
+      let nextStep: LoginStep;
+      if (stepType === "user_input" && hasMethod(login.process, "submitUserInput")) {
+        nextStep = await (login.process as LoginProcessUserInput).submitUserInput(this.#requestContext(), stringMap(request.body));
+      } else if (stepType === "cookies" && hasMethod(login.process, "submitCookies")) {
+        nextStep = await (login.process as LoginProcessCookies).submitCookies(this.#requestContext(), stringMap(request.body));
+      } else if (stepType === "display_and_wait" && hasMethod(login.process, "wait")) {
+        nextStep = await (login.process as LoginProcessDisplayAndWait).wait(this.#requestContext());
+      } else {
+        return jsonHTTPResponse(400, matrixError("M_BAD_REQUEST", `Unsupported login step type ${stepType}`));
+      }
+      if (nextStep.type === "complete") {
+        defaultLogger("info", "provisioning_login_complete", { loginId });
+        this.#provisioningLogins.delete(loginId);
+        if (nextStep.complete?.userLogin) await this.loadUserLogin(nextStep.complete.userLogin);
+        else if (nextStep.complete?.userLoginId) await this.loadUserLogin({ id: nextStep.complete.userLoginId });
+      } else {
+        login.nextStep = nextStep;
+      }
+      return jsonHTTPResponse(200, loginStepResponse(loginId, nextStep));
+    }
+    return null;
+  }
+
   async #dispatchMatrixMessage(event: MatrixMessageEvent): Promise<MatrixDispatchResult> {
     if (event.sender.isMe || event.sender.userId === this.#ownUserId) {
+      defaultLogger("debug", "matrix_message_ignored_own", { eventId: event.eventId, roomId: event.roomId, sender: event.sender.userId });
       return { dispatched: false, eventId: event.eventId, handlers: 0, kind: event.kind, roomId: event.roomId };
     }
     const command = this.#parseManagementCommand(event);
@@ -495,6 +588,7 @@ export class RuntimeBridge implements PickleBridge {
     for (const client of this.#networkClients.values()) {
       if (!hasMethod(client, "handleMatrixMessage")) continue;
       handlers += 1;
+      defaultLogger("debug", "matrix_message_to_network", { eventId: event.eventId, loginHandlers: handlers, roomId: event.roomId });
       await client.handleMatrixMessage(this.#requestContext(), msg);
     }
     return { dispatched: handlers > 0, eventId: event.eventId, handlers, kind: event.kind, roomId: event.roomId };
@@ -506,7 +600,7 @@ export class RuntimeBridge implements PickleBridge {
     }
     const response = await this.connector.handleCommand(this.#requestContext(), command) as MatrixCommandResponse;
     if (response?.text || response?.content) {
-      await this.#matrixIntent().sendMessage(command.event.roomId, response.content ?? {
+      await this.#sendCommandReply(command.event.roomId, response.content ?? {
         body: response.text,
         msgtype: "m.notice",
       });
@@ -515,8 +609,9 @@ export class RuntimeBridge implements PickleBridge {
   }
 
   #parseManagementCommand(event: MatrixMessageEvent): MatrixCommand | null {
-    const room = this.#managementRooms.get(event.roomId);
-    if (!room) return null;
+    const explicitRoom = this.#managementRooms.get(event.roomId);
+    if (!explicitRoom && this.#portalsByRoom.has(event.roomId)) return null;
+    const room = explicitRoom ?? this.#implicitManagementRoom(event);
     const text = event.text || stringContent(event.content.body);
     if (!text) return null;
     const prefix = this.connector.getName().defaultCommandPrefix ?? "";
@@ -524,6 +619,13 @@ export class RuntimeBridge implements PickleBridge {
     if (!body) return null;
     const [command = "", ...args] = body.split(/\s+/);
     if (!command) return null;
+    defaultLogger("info", "management_command_received", {
+      args,
+      command,
+      eventId: event.eventId,
+      roomId: event.roomId,
+      sender: event.sender.userId,
+    });
     return {
       args,
       body,
@@ -534,6 +636,12 @@ export class RuntimeBridge implements PickleBridge {
       sender: event.sender,
       text,
     };
+  }
+
+  #implicitManagementRoom(event: MatrixMessageEvent): ManagementRoom {
+    const room: ManagementRoom = { mxid: event.roomId };
+    this.registerManagementRoom(room);
+    return room;
   }
 
   async #dispatchMatrixReaction(event: MatrixReactionEvent): Promise<MatrixDispatchResult> {
@@ -757,6 +865,32 @@ export class RuntimeBridge implements PickleBridge {
     }
     return this.#matrixIntent().sendMessage(roomId, content);
   }
+
+  async #sendCommandReply(roomId: string, content: Record<string, unknown>): Promise<SentEvent> {
+    try {
+      const sender = this.#appserviceOptions ? appserviceBotUserId(this.#appserviceOptions) : null;
+      const result = sender
+        ? await this.#matrixClient.appservice.sendMessage({ content, roomId, userId: sender } as MatrixAppserviceSendMessageOptions)
+        : await this.#matrixIntent().sendMessage(roomId, content);
+      defaultLogger("info", "management_command_reply_sent", { eventId: result.eventId, roomId, sender });
+      return result;
+    } catch (error: unknown) {
+      defaultLogger("error", "management_command_reply_failed", { error, roomId });
+      throw error;
+    }
+  }
+
+  #sendCurrentBridgeStatus(): void {
+    const websocket = this.#appserviceWebsocket;
+    if (!websocket) return;
+    const logins = Array.from(this.#userLogins.values());
+    const stateEvent = bridgeStateEvent(this.#bridgeStatus?.state ?? (logins.length > 0 ? "running" : "starting"));
+    let sent = websocket.send("bridge_status", bridgeStatePayload(stateEvent)) ? 1 : 0;
+    for (const login of logins) {
+      if (websocket.send("bridge_status", bridgeStatePayload("CONNECTED", login))) sent += 1;
+    }
+    defaultLogger("debug", "bridge_status_sent", { loginCount: logins.length, sent, stateEvent });
+  }
 }
 
 const defaultLogger: BridgeLogger = (level, message, data) => {
@@ -770,6 +904,50 @@ function isGenericEvent(event: MatrixClientEvent, kind: string): event is Generi
 
 function hasMethod<T extends string>(value: object, method: T): value is object & Record<T, (...args: unknown[]) => unknown> {
   return method in value && typeof (value as Record<string, unknown>)[method] === "function";
+}
+
+function appserviceBotUserId(options: MatrixAppserviceInitOptions): string {
+  return `@${options.registration.senderLocalpart}:${options.homeserverDomain}`;
+}
+
+function bridgeStateEvent(state: BridgeState): string {
+  switch (state) {
+    case "starting":
+      return "STARTING";
+    case "running":
+      return "RUNNING";
+    case "stopping":
+    case "stopped":
+      return "BRIDGE_UNREACHABLE";
+    case "degraded":
+      return "TRANSIENT_DISCONNECT";
+    case "error":
+      return "UNKNOWN_ERROR";
+  }
+}
+
+function bridgeStatePayload(stateEvent: string, login?: UserLogin): Record<string, unknown> {
+  return stripUndefined({
+    remote_id: login?.id,
+    remote_name: login?.remoteName,
+    user_id: login?.userId,
+    state_event: stateEvent,
+    timestamp: Math.floor(Date.now() / 1000),
+  });
+}
+
+function provisioningCapabilities(capabilities: { provisioning?: { groupCreation?: unknown; resolveIdentifier?: unknown } }): unknown {
+  const provisioning = capabilities.provisioning;
+  if (provisioning) {
+    return {
+      group_creation: provisioning.groupCreation ?? {},
+      resolve_identifier: provisioning.resolveIdentifier ?? {},
+    };
+  }
+  return {
+    group_creation: {},
+    resolve_identifier: {},
+  };
 }
 
 function hasPushURL(url: string | undefined): boolean {
@@ -891,4 +1069,76 @@ function beeperAppServiceOptions(input: {
   if (input.bridgeType !== undefined) output.bridgeType = input.bridgeType;
   if (input.getOnly !== undefined) output.getOnly = input.getOnly;
   return output;
+}
+
+function jsonHTTPResponse(status: number, body: unknown): HTTPProxyResponse {
+  return {
+    body,
+    headers: { "content-type": ["application/json"] },
+    status,
+  };
+}
+
+function matrixError(errcode: string, error: string): Record<string, string> {
+  return { errcode, error };
+}
+
+function loginStepResponse(loginId: string, step: LoginStep): Record<string, unknown> {
+  return {
+    login_id: loginId,
+    ...loginStepJSON(step),
+  };
+}
+
+function loginStepJSON(step: LoginStep): Record<string, unknown> {
+  return stripUndefined({
+    complete: step.complete ? stripUndefined({
+      user_login_id: step.complete.userLoginId,
+    }) : undefined,
+    cookies: step.cookies ? stripUndefined({
+      extract_js: step.cookies.extractJs,
+      fields: step.cookies.fields.map((field) => stripUndefined({
+        id: field.id,
+        pattern: field.pattern,
+        required: field.required,
+        sources: field.sources.map((source) => stripUndefined({
+          cookie_domain: source.cookieDomain,
+          name: source.name,
+          request_url_regex: source.requestUrlRegex,
+          type: source.type,
+        })),
+      })),
+      url: step.cookies.url,
+      user_agent: step.cookies.userAgent,
+      wait_for_url_pattern: step.cookies.waitForUrlPattern,
+    }) : undefined,
+    display_and_wait: step.displayAndWait ? stripUndefined({
+      data: step.displayAndWait.data,
+      image_url: step.displayAndWait.imageUrl,
+      type: step.displayAndWait.type,
+    }) : undefined,
+    instructions: step.instructions,
+    step_id: step.stepId,
+    type: step.type,
+    user_input: step.userInput ? {
+      fields: step.userInput.fields.map((field) => stripUndefined({
+        default_value: field.defaultValue,
+        description: field.description,
+        id: field.id,
+        name: field.name,
+        options: field.options,
+        pattern: field.pattern,
+        type: field.type,
+      })),
+    } : undefined,
+  });
+}
+
+function stringMap(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") return {};
+  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+}
+
+function randomID(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }

@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { loginWithPassword } from "@beeper/pickle/auth";
 import { createBeeperBridge } from "@beeper/pickle-bridge";
 import type { CreateNodeBeeperBridgeOptions, Portal } from "@beeper/pickle-bridge/types";
-import { DummyConnector, LOGIN_ID, PORTAL_ID, makeGhostMxid } from "./connector";
+import { DUMMY_CHAT_IDS, DummyConnector, LOGIN_ID, PORTAL_ID, makeGhostMxid } from "./connector";
 import { loadEnv, optionalEnv, requiredEnv } from "./env";
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -11,16 +11,18 @@ const sourceRoot = root.endsWith("/dist/src") ? resolve(root, "../..") : resolve
 
 await loadEnv(resolve(sourceRoot, ".env"));
 
-const senderLocalpart = optionalEnv("DUMMYBRIDGE_SENDER_LOCALPART", "dummybridgebot") ?? "dummybridgebot";
 const account = await loginWithPassword({
   password: requiredEnv("BEEPER_PASSWORD"),
   username: requiredEnv("BEEPER_USERNAME"),
 });
 const serverName = domainFromUserId(account.userId);
+const bridgeName = optionalEnv("DUMMYBRIDGE_BRIDGE_NAME", "sh-dummybridge2") ?? "sh-dummybridge";
+const senderLocalpart = `${bridgeName}bot`;
 
 const bridgeOptions: CreateNodeBeeperBridgeOptions = {
   account,
-  bridge: optionalEnv("DUMMYBRIDGE_BRIDGE_NAME", "sh-dummybridge") ?? "sh-dummybridge",
+  bridge: bridgeName,
+  bridgeType: "dummybridge-js",
   connector: new DummyConnector({ senderLocalpart, serverName }),
 };
 const bridgeAddress = optionalEnv("DUMMYBRIDGE_URL");
@@ -28,7 +30,11 @@ if (bridgeAddress !== undefined) bridgeOptions.address = bridgeAddress;
 const bridge = await createBeeperBridge(bridgeOptions);
 
 await bridge.start();
-const login = { id: LOGIN_ID };
+const login = {
+  id: LOGIN_ID,
+  remoteName: "Dummy Account",
+  userId: account.userId,
+};
 await bridge.loadUserLogin(login);
 
 const existingManagementRoomId = optionalEnv("DUMMYBRIDGE_MANAGEMENT_ROOM_ID");
@@ -71,18 +77,27 @@ if (existingRoomId) {
 }
 
 if (portal?.mxid && optionalEnv("DUMMYBRIDGE_BACKFILL_ON_START") === "1") {
-  await bridge.backfill({
-    events: [{
-      content: {
-        body: "DummyBridge backfilled hello",
-        msgtype: "m.text",
-      },
-      sender: ghostMxid,
-      timestamp: Date.now() - 60_000,
-    }],
-    roomId: portal.mxid,
-  });
+  await bridge.backfillMessages(login, { portal });
   console.log(`backfilled ${portal.mxid}`);
+}
+
+if (optionalEnv("DUMMYBRIDGE_CREATE_DUMMY_CHATS", "1") === "1") {
+  const count = Math.max(1, Math.min(Number(optionalEnv("DUMMYBRIDGE_DUMMY_CHAT_COUNT", "2")) || 2, DUMMY_CHAT_IDS.length));
+  for (const portalId of DUMMY_CHAT_IDS.slice(0, count)) {
+    try {
+      const room = await bridge.createPortalRoom({
+        invite: [account.userId],
+        name: `Pickle ${titleCase(portalId)}`,
+        portalKey: { id: portalId, receiver: login.id },
+        topic: "A dummy chat created by the TypeScript Pickle bridge.",
+        userId: ghostMxid,
+      });
+      await bridge.backfillMessages(login, { portal: room });
+      console.log(`created and backfilled dummy chat ${room.mxid}`);
+    } catch (error) {
+      console.error(`failed to create/backfill dummy chat ${portalId}`, error);
+    }
+  }
 }
 
 console.log("dummybridge running");
@@ -100,4 +115,8 @@ function domainFromUserId(userId: string): string {
     throw new Error(`Cannot infer Matrix server name from ${userId}`);
   }
   return userId.slice(index + 1);
+}
+
+function titleCase(value: string): string {
+  return value.replace(/^dummy-chat-/, "").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
