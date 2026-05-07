@@ -46,6 +46,7 @@ import type {
   MessageRequest,
   MessageRequestHandlingNetworkAPI,
   RemoteMessage,
+  RemoteMessageWithTransactionID,
   RemoteBackfill,
   RemoteChatDelete,
   RemoteChatInfoChange,
@@ -64,6 +65,7 @@ import type {
   BridgeStateEvent,
   BridgeStatePayload,
   BridgeBeeperOptions,
+  BridgeRemoteBackfillOptions,
   BridgeRemoteEventOptions,
   BridgeRemoteMessageOptions,
   BackfillQueueParams,
@@ -318,22 +320,34 @@ export class RuntimeBridge implements PickleBridge {
 
   queue(login: UserLogin): RemoteEventQueue {
     return {
-      event: (event) => this.queueEvent(login, event),
-      message: (options) => this.queueMessage(login, options),
+      backfill: (options) => this.#queueBackfillEvent(login, options),
+      event: (event) => this.#queueEvent(login, event),
+      message: (options) => this.#queueMessage(login, options),
     };
   }
 
-  queueMessage<T>(login: UserLogin, options: BridgeRemoteMessageOptions<T>): QueueRemoteEventResult {
-    return this.queueRemoteEvent(login, createRemoteMessage({
-      ...options,
-      convert: options.convert ?? (() => convertedMessageFromOptions(options)),
-      data: options.data as T,
-      portalKey: this.#portalKeyReference(login, options.portal),
-      sender: this.#eventSenderReference(login, options.sender),
-    }));
+  #queueMessage<T>(login: UserLogin, options: BridgeRemoteMessageOptions<T>): QueueRemoteEventResult {
+    return this.queueRemoteEvent(login, this.#remoteMessageEvent(login, options));
   }
 
-  queueEvent(login: UserLogin, input: RemoteEvent | BridgeRemoteEventOptions): QueueRemoteEventResult {
+  #queueBackfillEvent(login: UserLogin, options: BridgeRemoteBackfillOptions): QueueRemoteEventResult {
+    const portalKey = this.#portalKeyReference(login, options.portal);
+    return this.queueRemoteEvent(login, {
+      getBackfillData: () => Promise.resolve({
+        cursor: options.cursor,
+        forward: options.forward,
+        hasMore: options.hasMore,
+        markRead: options.markRead,
+        messages: options.messages.map((message) => ({ event: this.#remoteMessageEvent(login, { ...message, portal: message.portal ?? options.portal }) })),
+        progress: options.progress,
+      }),
+      getPortalKey: () => portalKey,
+      getSender: () => ({ isFromMe: true, sender: login.userId ?? this.#ownerUserId ?? "" }),
+      getType: () => "backfill",
+    });
+  }
+
+  #queueEvent(login: UserLogin, input: RemoteEvent | BridgeRemoteEventOptions): QueueRemoteEventResult {
     if (!("event" in input)) return this.queueRemoteEvent(login, input);
     const portalKey = this.#portalKeyReference(login, input.portal);
     const sender = this.#eventSenderReference(login, input.sender ?? { isFromMe: true, sender: login.userId ?? this.#ownerUserId ?? "" });
@@ -341,6 +355,16 @@ export class RuntimeBridge implements PickleBridge {
       ...input.event,
       getPortalKey: () => portalKey,
       getSender: () => sender,
+    });
+  }
+
+  #remoteMessageEvent<T>(login: UserLogin, options: BridgeRemoteMessageOptions<T>): RemoteMessage | RemoteMessageWithTransactionID {
+    return createRemoteMessage({
+      ...options,
+      convert: options.convert ?? (() => convertedMessageFromOptions(options)),
+      data: options.data as T,
+      portalKey: this.#portalKeyReference(login, options.portal),
+      sender: this.#eventSenderReference(login, options.sender),
     });
   }
 
@@ -643,8 +667,6 @@ export class RuntimeBridge implements PickleBridge {
       client: this.#matrixClient,
       log: defaultLogger,
       queue: (login) => this.queue(login),
-      queueEvent: (login, event) => this.queueEvent(login, event),
-      queueMessage: (login, options) => this.queueMessage(login, options),
       queueRemoteEvent: (login, event) => this.queueRemoteEvent(login, event),
     };
     if (this.#dataStore) context.dataStore = this.#dataStore;

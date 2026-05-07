@@ -521,8 +521,6 @@ export interface PickleBridge {
   getUserInfo(userId: UserID): Promise<MatrixUserInfo>;
   loadUserLogin(login: UserLogin): Promise<NetworkAPI>;
   queue(login: UserLogin): RemoteEventQueue;
-  queueEvent(login: UserLogin, event: RemoteEvent | BridgeRemoteEventOptions): QueueRemoteEventResult;
-  queueMessage<T>(login: UserLogin, options: BridgeRemoteMessageOptions<T>): QueueRemoteEventResult;
   queueRemoteEvent(login: UserLogin, event: RemoteEvent): QueueRemoteEventResult;
   registerGhost(ghost: Ghost): void;
   registerManagementRoom(room: ManagementRoom): void;
@@ -590,8 +588,6 @@ export interface BridgeContext {
   dataStore?: BridgeDataStore;
   log: BridgeLogger;
   queue(login: UserLogin): RemoteEventQueue;
-  queueEvent(login: UserLogin, event: RemoteEvent | BridgeRemoteEventOptions): QueueRemoteEventResult;
-  queueMessage<T>(login: UserLogin, options: BridgeRemoteMessageOptions<T>): QueueRemoteEventResult;
   queueRemoteEvent(login: UserLogin, event: RemoteEvent): QueueRemoteEventResult;
 }
 
@@ -619,8 +615,23 @@ export interface QueueRemoteEventResult {
 }
 
 export interface RemoteEventQueue {
+  backfill(options: BridgeRemoteBackfillOptions): QueueRemoteEventResult;
   event(event: RemoteEvent | BridgeRemoteEventOptions): QueueRemoteEventResult;
   message<T = unknown>(options: BridgeRemoteMessageOptions<T>): QueueRemoteEventResult;
+}
+
+export interface BridgeRemoteBackfillOptions {
+  cursor?: PaginationCursor;
+  forward?: boolean;
+  hasMore?: boolean;
+  markRead?: boolean;
+  messages: BridgeRemoteBackfillMessageOptions[];
+  portal: PortalReference;
+  progress?: BackfillProgress;
+}
+
+export interface BridgeRemoteBackfillMessageOptions<T = unknown> extends Omit<BridgeRemoteMessageOptions<T>, "portal"> {
+  portal?: PortalReference;
 }
 
 export interface BridgeCreatePortalRoomOptions {

@@ -60,6 +60,14 @@ bridge.queue(login).message({
   sender: "alice",
   content: { msgtype: "m.notice", body: "custom Matrix content" },
 });
+
+bridge.queue(login).backfill({
+  portal,
+  messages: [
+    { id: "old-message-1", sender: "alice", text: "older message" },
+    { id: "old-message-2", sender: "alice", text: "newer message" },
+  ],
+});
 ```
 
 The bridge package is Node-only and uses the same Pickle WASM mechanism as
