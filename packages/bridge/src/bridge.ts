@@ -82,6 +82,7 @@ export async function createBeeperBridgeWithClient(options: CreateBeeperBridgeOp
     address: options.address,
     baseDomain: options.baseDomain,
     bridge: options.bridge,
+    bridgeType: options.bridgeType,
     getOnly: options.getOnly,
     homeserver: matrix.homeserver,
     homeserverDomain: domainFromUserID(options.account.userId),
@@ -857,6 +858,7 @@ function beeperAppServiceOptions(input: {
   address: string | undefined;
   baseDomain: string | undefined;
   bridge: string;
+  bridgeType: string | undefined;
   getOnly: boolean | undefined;
   homeserver: string | undefined;
   homeserverDomain: string;
@@ -869,6 +871,7 @@ function beeperAppServiceOptions(input: {
   } as Parameters<typeof createBeeperAppServiceInit>[0];
   if (input.address !== undefined) output.address = input.address;
   if (input.baseDomain !== undefined) output.baseDomain = input.baseDomain;
+  if (input.bridgeType !== undefined) output.bridgeType = input.bridgeType;
   if (input.getOnly !== undefined) output.getOnly = input.getOnly;
   if (input.homeserver !== undefined) output.homeserver = input.homeserver;
   return output;

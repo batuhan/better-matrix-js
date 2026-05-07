@@ -26,24 +26,35 @@ describe("Beeper bridge manager helpers", () => {
           userInfo: { username: "alice" },
         });
       }
-      expect(String(url)).toBe("https://matrix.example/_hungryserv/alice/_matrix/asmux/mxauth/appservice/alice/sh-dummy");
-      expect(init?.method).toBe("PUT");
+      if (String(url) === "https://matrix.example/_hungryserv/alice/_matrix/asmux/mxauth/appservice/alice/sh-dummy") {
+        expect(init?.method).toBe("PUT");
+        expect(JSON.parse(String(init?.body))).toEqual({
+          address: "https://bridge.example",
+          push: true,
+          self_hosted: true,
+        });
+        return jsonResponse({
+          as_token: "as",
+          hs_token: "hs",
+          id: "sh-dummy",
+          namespaces: {
+            user_ids: [{ exclusive: true, regex: "@dummy_.*:beeper.local" }],
+          },
+          rate_limited: false,
+          sender_localpart: "dummybot",
+          url: "https://bridge.example",
+        });
+      }
+      expect(String(url)).toBe("https://api.example/bridgebox/alice/bridge/sh-dummy/bridge_state");
+      expect(init?.method).toBe("POST");
+      expect(init?.headers).toMatchObject({ authorization: "Bearer as" });
       expect(JSON.parse(String(init?.body))).toEqual({
-        address: "https://bridge.example",
-        push: true,
-        self_hosted: true,
+        info: {},
+        isSelfHosted: true,
+        reason: "SELF_HOST_REGISTERED",
+        stateEvent: "RUNNING",
       });
-      return jsonResponse({
-        as_token: "as",
-        hs_token: "hs",
-        id: "sh-dummy",
-        namespaces: {
-          user_ids: [{ exclusive: true, regex: "@dummy_.*:beeper.local" }],
-        },
-        rate_limited: false,
-        sender_localpart: "dummybot",
-        url: "https://bridge.example",
-      });
+      return emptyResponse();
     });
 
     await expect(createBeeperAppServiceInit({
@@ -102,5 +113,15 @@ function jsonResponse(data: unknown): Response {
     ok: true,
     status: 200,
     statusText: "OK",
+    text: async () => JSON.stringify(data),
+  } as Response;
+}
+
+function emptyResponse(): Response {
+  return {
+    ok: true,
+    status: 200,
+    statusText: "OK",
+    text: async () => "",
   } as Response;
 }

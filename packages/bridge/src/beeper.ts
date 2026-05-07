@@ -47,7 +47,9 @@ export interface BeeperWhoamiResponse {
 export interface RegisterAppServiceOptions {
   address?: string;
   bridge: string;
+  bridgeType?: string;
   getOnly?: boolean;
+  postState?: boolean;
   push?: boolean;
   selfHosted?: boolean;
 }
@@ -100,11 +102,35 @@ export class BeeperBridgeManagerClient {
 
   async registerAppService(options: RegisterAppServiceOptions): Promise<MatrixAppserviceRegistration> {
     if (options.getOnly) return this.getAppService(options.bridge);
-    return normalizeRegistration(await this.#hungryRequest("PUT", options.bridge, {
+    const registration = normalizeRegistration(await this.#hungryRequest("PUT", options.bridge, {
       address: options.address,
       push: options.push ?? Boolean(options.address),
       self_hosted: options.selfHosted ?? true,
     }));
+    if (options.postState !== false) {
+      const stateOptions: PostBridgeStateOptions = {
+        asToken: registration.asToken,
+        bridge: options.bridge,
+        isSelfHosted: options.selfHosted ?? true,
+        reason: "SELF_HOST_REGISTERED",
+        stateEvent: bridgeStateEvent(options),
+      };
+      if (options.bridgeType !== undefined) stateOptions.bridgeType = options.bridgeType;
+      await this.postBridgeState(stateOptions);
+    }
+    return registration;
+  }
+
+  async postBridgeState(options: PostBridgeStateOptions): Promise<void> {
+    const whoami = await this.whoami();
+    const username = this.#username ?? whoami.userInfo.username;
+    await this.#request("api", "POST", `/bridgebox/${encodeURIComponent(username)}/bridge/${encodeURIComponent(options.bridge)}/bridge_state`, {
+      bridgeType: options.bridgeType,
+      info: options.info ?? {},
+      isSelfHosted: options.isSelfHosted ?? true,
+      reason: options.reason,
+      stateEvent: options.stateEvent,
+    }, undefined, options.asToken);
   }
 
   async createAppService(options: CreateAppServiceOptions): Promise<RegisteredAppService> {
@@ -134,12 +160,12 @@ export class BeeperBridgeManagerClient {
     return this.#request("hungry", method, path, body, username);
   }
 
-  async #request<T>(kind: "api" | "hungry", method: "GET" | "PUT", path: string, body?: unknown, username?: string): Promise<T> {
+  async #request<T>(kind: "api" | "hungry", method: "GET" | "PUT" | "POST", path: string, body?: unknown, username?: string, token?: string): Promise<T> {
     const base = kind === "api" ? `https://api.${this.#baseDomain}` : hungryHomeserver(this.#baseDomain, username ?? this.#username ?? "");
     const url = kind === "api" ? new URL(path, base) : new URL(`${base}${path}`);
     const init: RequestInit = {
       headers: {
-        "authorization": `Bearer ${this.#token}`,
+        "authorization": `Bearer ${token ?? this.#token}`,
         ...(body ? { "content-type": "application/json" } : {}),
       },
       method,
@@ -154,8 +180,19 @@ export class BeeperBridgeManagerClient {
       } catch {}
       throw new Error(`Beeper bridge manager request failed (${response.status}): ${detail}`);
     }
-    return response.json() as Promise<T>;
+    const text = await response.text();
+    return (text ? JSON.parse(text) : undefined) as T;
   }
+}
+
+export interface PostBridgeStateOptions {
+  asToken: string;
+  bridge: string;
+  bridgeType?: string;
+  info?: Record<string, unknown>;
+  isSelfHosted?: boolean;
+  reason: string;
+  stateEvent: "STARTING" | "RUNNING" | "BAD_CREDENTIALS" | "UNKNOWN_ERROR" | "LOGGED_OUT" | "UNCONFIGURED";
 }
 
 export function createBeeperBridgeManagerClient(options: BeeperClientOptions): BeeperBridgeManagerClient {
@@ -174,6 +211,13 @@ export async function createBeeperAppService(options: BeeperClientOptions & Crea
 export async function createBeeperAppServiceInit(options: BeeperClientOptions & CreateAppServiceOptions): Promise<MatrixAppserviceInitOptions> {
   const { baseDomain, fetch: fetchImpl, token, username, ...appserviceOptions } = options;
   return createBeeperBridgeManagerClient(clientOptions({ baseDomain, fetch: fetchImpl, token, username })).createAppServiceInit(appserviceOptions);
+}
+
+function bridgeStateEvent(options: RegisterAppServiceOptions): PostBridgeStateOptions["stateEvent"] {
+  const bridgeType = options.bridgeType ?? "";
+  return (bridgeType && bridgeType !== "heisenbridge") || ["androidsms", "imessagecloud", "imessage"].includes(options.bridge)
+    ? "STARTING"
+    : "RUNNING";
 }
 
 function hungryHomeserver(baseDomain: string, username: string): string {

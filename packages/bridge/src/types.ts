@@ -543,6 +543,7 @@ export interface CreateBeeperBridgeOptions extends Omit<CreateBridgeOptions, "ap
   address?: string;
   baseDomain?: string;
   bridge: string;
+  bridgeType?: string;
   getOnly?: boolean;
   matrix: Partial<Omit<BridgeMatrixConfig, "account">> & Pick<BridgeMatrixConfig, "store">;
 }

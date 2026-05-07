@@ -1,8 +1,8 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loginWithPassword } from "@beeper/pickle/auth";
-import { createBeeperBridge } from "@beeper/pickle-bridge/node";
-import type { Portal } from "@beeper/pickle-bridge/types";
+import { createBeeperBridge } from "@beeper/pickle-bridge";
+import type { CreateNodeBeeperBridgeOptions, Portal } from "@beeper/pickle-bridge/types";
 import { DummyConnector, LOGIN_ID, PORTAL_ID, makeGhostMxid } from "./connector";
 import { loadEnv, optionalEnv, requiredEnv } from "./env";
 
@@ -18,11 +18,13 @@ const account = await loginWithPassword({
 });
 const serverName = domainFromUserId(account.userId);
 
-const bridgeOptions = {
+const bridgeOptions: CreateNodeBeeperBridgeOptions = {
   account,
   bridge: optionalEnv("DUMMYBRIDGE_BRIDGE_NAME", "sh-dummybridge") ?? "sh-dummybridge",
   connector: new DummyConnector({ senderLocalpart, serverName }),
 };
+const bridgeAddress = optionalEnv("DUMMYBRIDGE_URL");
+if (bridgeAddress !== undefined) bridgeOptions.address = bridgeAddress;
 const bridge = await createBeeperBridge(bridgeOptions);
 
 await bridge.start();

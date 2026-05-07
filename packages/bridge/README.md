@@ -6,7 +6,7 @@ bridgev2-shaped connector interfaces and bridge runtime orchestration.
 
 ```ts
 import { loginWithPassword } from "@beeper/pickle/auth";
-import { createBeeperBridge, createRemoteMessage } from "@beeper/pickle-bridge/node";
+import { createBeeperBridge, createRemoteMessage } from "@beeper/pickle-bridge";
 
 const account = await loginWithPassword({
   username: process.env.BEEPER_USERNAME!,
@@ -45,9 +45,9 @@ bridge.queueRemoteEvent(login, createRemoteMessage({
 }));
 ```
 
-The Node entrypoint uses the same Pickle WASM mechanism as `@beeper/pickle/node`.
-Browser and worker callers can import from `@beeper/pickle-bridge` and provide
-`wasmBytes`, `wasmModule`, or `wasmUrl`.
+The bridge package is Node-only and uses the same Pickle WASM mechanism as
+`@beeper/pickle/node`. Bridge authors do not need to load `wasm_exec.js` or
+`pickle.wasm`; the package loads the bundled runtime automatically.
 
 ## Bridge-manager helpers
 
