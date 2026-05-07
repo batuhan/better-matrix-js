@@ -62,7 +62,7 @@ Evidence:
 This file does not claim:
 
 - full client-server API coverage
-- full room-state/event coverage inherited from `matrix-js-sdk`
+- full client-server state/event coverage beyond Pickle's supported Matrix surface
 - outbound support for any surface not listed above
 
 If a new Matrix feature lands, add a row with:

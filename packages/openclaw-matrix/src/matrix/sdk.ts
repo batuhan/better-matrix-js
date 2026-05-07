@@ -191,7 +191,6 @@ export class MatrixClient {
         homeserver,
         userId: opts.userId ?? "",
       },
-      beeper: true,
       fetch: fetchImpl,
       logger: (level, message, data) => {
         LogService[level]("PickleMatrixClient", data === undefined ? message : `${message} ${String(data)}`);
@@ -327,11 +326,15 @@ export class MatrixClient {
   async sendMessage(roomId: string, content: MessageEventContent): Promise<string> {
     const stream = content["com.beeper.openclaw.stream"];
     if (isAsyncIterable(stream)) {
+      const finalText = content["com.beeper.openclaw.final_text"];
+      const finalAIMessage = content["com.beeper.openclaw.final_ai"];
       const sent = await this.pickle.streams.send({
         roomId,
         stream,
-        finalText: typeof content.body === "string" ? content.body : undefined,
-        mode: "beeper",
+        finalText: typeof finalText === "string" ? finalText : undefined,
+        finalAIMessage: isRecord(finalAIMessage) ? finalAIMessage : undefined,
+        mode: "auto",
+        replyTo: readReplyTo(content),
         threadRoot: readThreadRoot(content),
       });
       return sent.eventId;

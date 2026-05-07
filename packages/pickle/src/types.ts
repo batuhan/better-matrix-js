@@ -37,6 +37,7 @@ export interface SendMatrixStreamOptions {
   finalAIMessage?: Record<string, unknown>;
   finalText?: string;
   mode?: "auto" | "beeper" | "edits";
+  replyTo?: string;
   roomId: string;
   stream: MatrixStream;
   text?: string;

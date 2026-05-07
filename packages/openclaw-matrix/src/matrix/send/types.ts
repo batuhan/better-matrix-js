@@ -102,6 +102,9 @@ export type MatrixSendOpts = {
   replyToId?: string;
   threadId?: string | number | null;
   timeoutMs?: number;
+  richStreamKind?: "text" | "reasoning" | "tool" | "approval";
+  richStreamId?: string;
+  richStreamToolName?: string;
   /** Send audio as voice message instead of audio file. Defaults to false. */
   audioAsVoice?: boolean;
 };

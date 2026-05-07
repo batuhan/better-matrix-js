@@ -25,10 +25,7 @@ async function fetchMatrixMediaBuffer(params: {
   maxBytes: number;
 }): Promise<{ buffer: Buffer } | null> {
   try {
-    const buffer = await params.client.downloadContent(params.mxcUrl, {
-      maxBytes: params.maxBytes,
-      readIdleTimeoutMs: MATRIX_MEDIA_DOWNLOAD_IDLE_TIMEOUT_MS,
-    });
+    const buffer = await params.client.downloadContent(params.mxcUrl);
     return { buffer };
   } catch (err) {
     if (isMatrixMediaSizeLimitError(err)) {

@@ -16,7 +16,7 @@ describe("matrix package manifest", () => {
       fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
     ) as MatrixPackageManifest;
 
-    expect(packageJson.dependencies?.["fake-indexeddb"]).toBeDefined();
+    expect(packageJson.dependencies?.["@beeper/pickle"]).toBeDefined();
     expect(packageJson.openclaw?.bundle?.stageRuntimeDependencies).toBe(true);
   });
 });

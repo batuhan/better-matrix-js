@@ -198,7 +198,7 @@ export async function verifyMatrixRecoveryKey(
 ) {
   return await withStartedActionClient(
     opts,
-    async (client) => await client.verifyWithRecoveryKey(recoveryKey),
+    async (client) => await client.verifyWithRecoveryKey(),
   );
 }
 
@@ -210,9 +210,7 @@ export async function restoreMatrixRoomKeyBackup(
   return await withStartedActionClient(
     opts,
     async (client) =>
-      await client.restoreRoomKeyBackup({
-        recoveryKey: normalizeOptionalString(opts.recoveryKey),
-      }),
+      await client.restoreRoomKeyBackup(),
   );
 }
 
@@ -229,9 +227,6 @@ export async function bootstrapMatrixVerification(
   return await withStartedActionClient(
     opts,
     async (client) =>
-      await client.bootstrapOwnDeviceVerification({
-        recoveryKey: normalizeOptionalString(opts.recoveryKey),
-        forceResetCrossSigning: opts.forceResetCrossSigning === true,
-      }),
+      await client.bootstrapOwnDeviceVerification(),
   );
 }

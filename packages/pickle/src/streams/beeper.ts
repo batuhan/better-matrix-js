@@ -25,6 +25,7 @@ export async function sendBeeperStream(
     messageType: "m.text" as const,
     roomId: opts.roomId,
     text: "...",
+    ...(opts.replyTo === undefined ? {} : { replyTo: opts.replyTo }),
     ...(opts.threadRoot === undefined ? {} : { threadRoot: opts.threadRoot }),
   };
   const target = await client.messages.send(targetOptions);

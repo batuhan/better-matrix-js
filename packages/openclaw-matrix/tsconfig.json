@@ -9,6 +9,10 @@
     "moduleResolution": "Bundler",
     "noEmit": true,
     "noImplicitAny": false,
+    "paths": {
+      "@beeper/pickle": ["../pickle/dist/index.d.ts"],
+      "@beeper/pickle/beeper/auth": ["../pickle/dist/beeper/auth.d.ts"]
+    },
     "skipLibCheck": true,
     "strict": false,
     "useUnknownInCatchVariables": false

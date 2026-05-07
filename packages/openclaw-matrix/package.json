@@ -3,6 +3,10 @@
   "version": "2026.4.12-pickle.0",
   "description": "OpenClaw Matrix channel plugin powered by Pickle",
   "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@beeper/pickle": "workspace:*",
     "markdown-it": "14.1.1",

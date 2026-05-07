@@ -23,7 +23,7 @@ export default defineBundledChannelEntry({
   registerFull(api) {
     void import("./plugin-entry.handlers.runtime.js")
       .then(({ ensureMatrixCryptoRuntime }) =>
-        ensureMatrixCryptoRuntime({ log: api.logger.info }).catch((err: unknown) => {
+        ensureMatrixCryptoRuntime().catch((err: unknown) => {
           const message = formatErrorMessage(err);
           api.logger.warn?.(`matrix: crypto runtime bootstrap failed: ${message}`);
         }),

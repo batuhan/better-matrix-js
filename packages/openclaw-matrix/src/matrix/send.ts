@@ -115,6 +115,50 @@ function withMatrixExtraContentFields<T extends Record<string, unknown>>(
   return { ...content, ...extraContent };
 }
 
+async function* createBeeperRichStreamParts(params: {
+  text: string;
+  kind: "text" | "reasoning" | "tool" | "approval";
+  id: string;
+  toolName?: string;
+}): AsyncIterable<Record<string, unknown>> {
+  const text = params.text;
+  if (params.kind === "reasoning") {
+    yield { type: "reasoning-start", id: params.id };
+    if (text) yield { type: "reasoning-delta", id: params.id, delta: text };
+    yield { type: "reasoning-end", id: params.id };
+    yield { type: "finish", finishReason: "stop" };
+    return;
+  }
+  if (params.kind === "tool" || params.kind === "approval") {
+    const toolCallId = params.id;
+    const toolName = params.toolName ?? params.kind;
+    yield { type: "tool-input-start", toolCallId, toolName };
+    yield {
+      type: "tool-input-available",
+      toolCallId,
+      toolName,
+      input: params.kind === "approval" ? { approval: text } : { message: text },
+    };
+    if (params.kind === "approval") {
+      yield {
+        type: "tool-approval-request",
+        toolCallId,
+        toolName,
+        approvalId: toolCallId,
+        reason: text,
+      };
+    } else {
+      yield { type: "tool-output-available", toolCallId, toolName, output: text };
+    }
+    yield { type: "finish", finishReason: "stop" };
+    return;
+  }
+  yield { type: "text-start", id: params.id };
+  if (text) yield { type: "text-delta", id: params.id, delta: text };
+  yield { type: "text-end", id: params.id };
+  yield { type: "finish", finishReason: "stop" };
+}
+
 async function resolvePreviousEditMentions(params: {
   client: MatrixClient;
   content: Record<string, unknown> | undefined;
@@ -304,6 +348,18 @@ export async function sendMessageMatrix(
             continue;
           }
           const content = buildTextContent(text, relation);
+          if (opts.richStreamKind) {
+            (content as Record<string, unknown>)["com.beeper.openclaw.stream"] =
+              createBeeperRichStreamParts({
+                text,
+                kind: opts.richStreamKind,
+                id: opts.richStreamId ?? `${opts.richStreamKind}_${Date.now().toString(36)}`,
+                toolName: opts.richStreamToolName,
+              });
+            if (opts.richStreamKind !== "reasoning") {
+              (content as Record<string, unknown>)["com.beeper.openclaw.final_text"] = text;
+            }
+          }
           await enrichMatrixFormattedContent({
             client,
             content,

@@ -67,7 +67,9 @@ function resolveMatrixCurrentDmRoomId(params: {
   }
 }
 
-export function resolveMatrixOutboundSessionRoute(params: ChannelOutboundSessionRouteParams) {
+type MatrixOutboundSessionRoute = ReturnType<typeof buildChannelOutboundSessionRoute>;
+
+export function resolveMatrixOutboundSessionRoute(params: ChannelOutboundSessionRouteParams): MatrixOutboundSessionRoute | null {
   const target =
     resolveMatrixTargetIdentity(params.resolvedTarget?.to ?? params.target) ??
     resolveMatrixTargetIdentity(params.target);

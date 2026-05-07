@@ -1,11 +1,22 @@
 export type MatrixVerificationMethod = "m.sas.v1" | "m.qr_code.show.v1" | string;
 export type MatrixVerificationSummary = {
+  completed: boolean;
   id: string;
-  phase?: string;
+  isSelfVerification: boolean;
+  otherUserId: string;
+  pending: boolean;
+  phase?: number;
+  phaseName?: string;
+  transactionId?: string;
   userId?: string;
   deviceId?: string;
   roomId?: string;
   createdAtMs?: number;
+  updatedAt?: string;
+  sas?: {
+    decimal?: [number, number, number];
+    emoji?: Array<[string, string]>;
+  };
 };
 export type MatrixVerificationRequestLike = Record<string, unknown>;
 export type MatrixVerificationCryptoApi = Record<string, unknown>;

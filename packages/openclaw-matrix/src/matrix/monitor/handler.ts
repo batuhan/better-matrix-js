@@ -1572,6 +1572,7 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
                 accountId: _route.accountId,
                 mediaLocalRoots,
                 tableMode,
+                richStreamKind: info.kind === "tool" ? "tool" : "text",
               });
             }
           },

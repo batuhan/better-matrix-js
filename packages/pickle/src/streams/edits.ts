@@ -10,6 +10,7 @@ export async function sendEditStream(messages: MatrixMessages, opts: SendMatrixS
   let lastFlushAt = 0;
   if (accumulated) {
     message = await messages.send(stripUndefined({
+      replyTo: opts.replyTo,
       roomId: opts.roomId,
       text: accumulated,
       threadRoot: opts.threadRoot,
@@ -23,6 +24,7 @@ export async function sendEditStream(messages: MatrixMessages, opts: SendMatrixS
     accumulated += text;
     if (!message) {
       message = await messages.send(stripUndefined({
+        replyTo: opts.replyTo,
         roomId: opts.roomId,
         text: accumulated,
         threadRoot: opts.threadRoot,
@@ -43,6 +45,7 @@ export async function sendEditStream(messages: MatrixMessages, opts: SendMatrixS
   }
   if (!message) {
     return messages.send(stripUndefined({
+      replyTo: opts.replyTo,
       roomId: opts.roomId,
       text: "...",
       threadRoot: opts.threadRoot,

@@ -299,6 +299,9 @@ export const matrixApprovalNativeRuntime = createChannelApprovalNativeRuntimeAda
         accountId: resolved.accountId,
         client: resolved.context.client,
         threadId: preparedTarget.threadId,
+        richStreamKind: "approval",
+        richStreamId: pendingPayload.approvalId,
+        richStreamToolName: "approval",
       });
       const messageIds = Array.from(
         new Set(

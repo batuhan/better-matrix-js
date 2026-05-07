@@ -65,7 +65,7 @@ function formatLocalTimestamp(value: string | null | undefined): string | null {
   if (!Number.isFinite(parsed.getTime())) {
     return value;
   }
-  return formatZonedTimestamp(parsed, { displaySeconds: true }) ?? value;
+  return formatZonedTimestamp(parsed.getTime()) ?? value;
 }
 
 function printTimestamp(label: string, value: string | null | undefined): void {

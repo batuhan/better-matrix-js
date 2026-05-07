@@ -178,7 +178,7 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
     try {
       client?.stopSyncWithoutPersist();
       if (client && mode === "persist") {
-        await client.drainPendingDecryptions("matrix monitor shutdown");
+        await client.drainPendingDecryptions();
       }
       if (mode === "persist") {
         await monitorTaskRunner.waitForIdle();
