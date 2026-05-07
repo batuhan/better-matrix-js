@@ -30,6 +30,10 @@ const matrixClient = {
       calls.createRoom.push(options);
       return { raw: {}, roomId: "!dummy:example" };
     },
+    async createPortalRoom(options: { name?: string; userId?: string }) {
+      calls.createRoom.push(options);
+      return { raw: {}, roomId: "!dummy:example" };
+    },
     async ensureJoined() {
       return { raw: {} };
     },
