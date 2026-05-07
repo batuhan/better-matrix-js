@@ -23,6 +23,8 @@ const bridgeOptions: CreateNodeBeeperBridgeOptions = {
   bridgeType: "dummybridge-js",
   connector: new DummyConnector(),
 };
+const baseDomain = optionalEnv("BEEPER_BASE_DOMAIN");
+if (baseDomain !== undefined) bridgeOptions.baseDomain = baseDomain;
 const bridgeAddress = optionalEnv("DUMMYBRIDGE_URL");
 if (bridgeAddress !== undefined) bridgeOptions.address = bridgeAddress;
 const bridge = await createBeeperBridge(bridgeOptions);

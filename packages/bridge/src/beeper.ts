@@ -135,9 +135,10 @@ export class BeeperBridgeManagerClient {
 
   async createAppService(options: CreateAppServiceOptions): Promise<RegisteredAppService> {
     const whoami = await this.whoami();
+    const username = this.#username ?? whoami.userInfo.username;
     const registration = await this.registerAppService(options);
     return {
-      homeserver: options.homeserver ?? hungryHomeserver(this.#baseDomain, whoami.userInfo.username),
+      homeserver: options.homeserver ?? hungryHomeserver(this.#baseDomain, username),
       homeserverDomain: options.homeserverDomain ?? "beeper.local",
       registration,
       whoami,

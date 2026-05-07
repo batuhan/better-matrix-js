@@ -141,7 +141,7 @@ to match bridgev2 concepts while using TypeScript idioms.
 ## Tests
 
 - [ ] Type conformance tests for golden bridge patterns.
-- [ ] Runtime start/stop tests.
+- [x] Runtime start/stop tests in `bridge.test.ts`.
 - [ ] WASM option forwarding tests.
-- [ ] Remote event queue tests.
-- [ ] Matrix sync dispatch tests.
+- [x] Remote event queue tests in `bridge.test.ts` for queued remote event draining.
+- [x] Matrix sync dispatch tests in `bridge.test.ts` for Matrix event dispatch.

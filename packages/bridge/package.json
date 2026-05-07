@@ -48,7 +48,7 @@
   "scripts": {
     "build": "tsdown",
     "clean": "rm -rf dist",
-    "prepublishOnly": "node ../../scripts/guard-pnpm-publish.mjs",
+    "prepublishOnly": "node ../../scripts/guard-pnpm-publish.mjs && pnpm build",
     "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit"
   },
@@ -58,7 +58,7 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/node": "^25.3.2",
+    "@types/node": "^20.0.0",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.0.18",
     "tsdown": "^0.21.10",

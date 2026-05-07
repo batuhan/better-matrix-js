@@ -205,35 +205,41 @@ export class AppserviceWebsocket {
       id: message.id,
       txnId: message.txn_id,
     });
-    if (this.#closeFromCommand(message)) return;
-    if (this.#handlePingResponse(message)) return;
-    if (message.command === "connect") return;
-    if (message.command === "ping") {
-      this.#send(messageResponse(message, true, message.data ?? { timestamp: Date.now() }));
-      return;
-    }
-    if (message.command === "response" || message.command === "error") return;
-    if (!message.command || message.command === "transaction") {
-      for (const raw of message.events ?? []) {
-        const event = rawMatrixEvent(raw);
-        this.#log("debug", "appservice_websocket_transaction_event", {
-          eventId: raw.event_id,
-          roomId: raw.room_id,
-          sender: raw.sender,
-          type: raw.type,
-        });
-        if (event) await this.#dispatch(event);
+    try {
+      if (this.#closeFromCommand(message)) return;
+      if (this.#handlePingResponse(message)) return;
+      if (message.command === "connect") return;
+      if (message.command === "ping") {
+        this.#send(messageResponse(message, true, message.data ?? { timestamp: Date.now() }));
+        return;
       }
-      this.#send(messageResponse(message, true, { txn_id: message.txn_id }));
-      return;
+      if (message.command === "response" || message.command === "error") return;
+      if (!message.command || message.command === "transaction") {
+        for (const raw of message.events ?? []) {
+          const event = rawMatrixEvent(raw);
+          this.#log("debug", "appservice_websocket_transaction_event", {
+            eventId: raw.event_id,
+            roomId: raw.room_id,
+            sender: raw.sender,
+            type: raw.type,
+          });
+          if (event) await this.#dispatch(event);
+        }
+        this.#send(messageResponse(message, true, { txn_id: message.txn_id }));
+        return;
+      }
+      if (message.command === "http_proxy") {
+        const response = await this.#handleHTTPProxy(message.data);
+        this.#log("debug", "appservice_websocket_http_proxy_response", { id: message.id, status: response.status });
+        this.#send(messageResponse(message, true, response));
+        return;
+      }
+      this.#send(messageResponse(message, false, { code: "M_UNKNOWN", message: `unknown websocket command ${message.command}` }));
+    } catch (error: unknown) {
+      const messageText = error instanceof Error ? error.message : String(error);
+      this.#log("error", "appservice_websocket_message_failed", { error: messageText, id: message.id });
+      this.#send(messageResponse(message, false, { code: "M_UNKNOWN", message: messageText }));
     }
-    if (message.command === "http_proxy") {
-      const response = await this.#handleHTTPProxy(message.data);
-      this.#log("debug", "appservice_websocket_http_proxy_response", { id: message.id, status: response.status });
-      this.#send(messageResponse(message, true, response));
-      return;
-    }
-    this.#send(messageResponse(message, false, { code: "M_UNKNOWN", message: `unknown websocket command ${message.command}` }));
   }
 
   async #handleHTTPProxy(data: unknown): Promise<HTTPProxyResponse> {
@@ -342,7 +348,7 @@ interface RawMatrixEvent {
 }
 
 function messageResponse(message: WebsocketMessage, ok: boolean, data: unknown): WebsocketRequest | null {
-  if (!message.id || message.command === "response" || message.command === "error") return null;
+  if (message.id === undefined || message.id === null || message.command === "response" || message.command === "error") return null;
   return {
     command: ok ? "response" : "error",
     data,

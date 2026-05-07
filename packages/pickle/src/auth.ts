@@ -42,8 +42,8 @@ export async function loginWithMatrixPassword(options: MatrixPasswordAuthOptions
 export function loginWithPassword(options: PasswordAuthOptions = {}): Promise<MatrixAuthenticatedAccount> {
   const username = options.username ?? process.env.BEEPER_USERNAME ?? process.env.MATRIX_USERNAME;
   const password = options.password ?? process.env.BEEPER_PASSWORD ?? process.env.MATRIX_PASSWORD;
-  if (!username) throw new Error("loginWithPassword requires username or BEEPER_USERNAME");
-  if (!password) throw new Error("loginWithPassword requires password or BEEPER_PASSWORD");
+  if (!username) throw new Error("loginWithPassword requires username, BEEPER_USERNAME, or MATRIX_USERNAME");
+  if (!password) throw new Error("loginWithPassword requires password, BEEPER_PASSWORD, or MATRIX_PASSWORD");
   return loginWithMatrixPassword({
     ...authOptions(options),
     password,

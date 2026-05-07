@@ -7,11 +7,26 @@ bridgev2-shaped connector interfaces and bridge runtime orchestration.
 ```ts
 import { loginWithPassword } from "@beeper/pickle/auth";
 import { createBeeperBridge, createRemoteMessage } from "@beeper/pickle-bridge";
+import type { BridgeConnector } from "@beeper/pickle-bridge/types";
 
 const account = await loginWithPassword({
   username: process.env.BEEPER_USERNAME!,
   password: process.env.BEEPER_PASSWORD!,
 });
+
+// Replace this stub with your bridge's connector implementation.
+const connector: BridgeConnector = {
+  createLogin: async () => ({ cancel: async () => {}, start: async () => ({ type: "complete", complete: { userLoginId: "example-login" } }) }),
+  getBridgeInfoVersion: () => ({ capabilities: 1, info: 1 }),
+  getCapabilities: () => ({}),
+  getConfig: () => ({}),
+  getDBMetaTypes: () => ({}),
+  getLoginFlows: () => [],
+  getName: () => ({ displayName: "Example", networkId: "example" }),
+  init: async () => {},
+  loadUserLogin: async () => ({ connect: async () => {}, disconnect: async () => {} }),
+  start: async () => {},
+};
 
 const bridge = await createBeeperBridge({
   account,

@@ -130,6 +130,7 @@ export class RuntimeBridge implements PickleBridge {
   readonly #portalsByKey = new Map<string, Portal>();
   readonly #portalsByRoom = new Map<string, Portal>();
   readonly #remoteEvents: Array<{ event: RemoteEvent; login: UserLogin }> = [];
+  readonly #networkClientLoads = new Map<string, Promise<NetworkAPI>>();
   readonly #userLogins = new Map<string, UserLogin>();
   readonly #loginStates = new Map<string, BridgeStatePayload>();
   readonly #matrixClient: MatrixClient;
@@ -189,6 +190,7 @@ export class RuntimeBridge implements PickleBridge {
     this.#started = true;
     await this.setBridgeState("running");
     this.#sendCurrentBridgeStatus();
+    this.#scheduleDrain();
   }
 
   async stop(): Promise<void> {
@@ -336,15 +338,27 @@ export class RuntimeBridge implements PickleBridge {
   async loadUserLogin(login: UserLogin): Promise<NetworkAPI> {
     const existing = this.#networkClients.get(login.id);
     if (existing) return existing;
+    const loading = this.#networkClientLoads.get(login.id);
+    if (loading) return loading;
+    const promise = this.#loadUserLogin(login);
+    this.#networkClientLoads.set(login.id, promise);
+    try {
+      return await promise;
+    } finally {
+      this.#networkClientLoads.delete(login.id);
+    }
+  }
+
+  async #loadUserLogin(login: UserLogin): Promise<NetworkAPI> {
     await this.#setLoginBridgeState(login, "CONNECTING");
     const client = await this.connector.loadUserLogin(this.#requestContext(), login);
+    await client.connect({ ...this.#requestContext(), login });
     login.client = client;
     this.#userLogins.set(login.id, login);
     this.#networkClients.set(login.id, client);
     if (this.#dataStore && hasMethod(this.#dataStore, "setUserLogin")) {
       await this.#dataStore.setUserLogin(login);
     }
-    await client.connect({ ...this.#requestContext(), login });
     await this.#setLoginBridgeState(login, "CONNECTED");
     defaultLogger("info", "user_login_loaded", { loginId: login.id, remoteName: login.remoteName, userId: login.userId });
     this.#sendCurrentBridgeStatus();
@@ -492,7 +506,12 @@ export class RuntimeBridge implements PickleBridge {
   }
 
   registerPortal(portal: Portal): void {
-    this.#portalsByKey.set(portalKeyString(portal.portalKey), portal);
+    const key = portalKeyString(portal.portalKey);
+    const existing = this.#portalsByKey.get(key);
+    if (existing?.mxid && existing.mxid !== portal.mxid) {
+      this.#portalsByRoom.delete(existing.mxid);
+    }
+    this.#portalsByKey.set(key, portal);
     if (portal.mxid) {
       this.#portalsByRoom.set(portal.mxid, portal);
     }
@@ -510,7 +529,8 @@ export class RuntimeBridge implements PickleBridge {
   }
 
   async flushRemoteEvents(): Promise<void> {
-    await this.#drainRemoteEvents();
+    this.#scheduleDrain();
+    await this.#drainPromise;
   }
 
   remoteEventBacklog(): readonly { event: RemoteEvent; login: UserLogin }[] {
@@ -723,7 +743,7 @@ export class RuntimeBridge implements PickleBridge {
     };
     let handlers = 0;
     try {
-      for (const client of this.#networkClients.values()) {
+      for (const client of this.#networkClientsForPortal(portal)) {
         if (!hasMethod(client, "handleMatrixMessage")) continue;
         handlers += 1;
         defaultLogger("debug", "matrix_message_to_network", { eventId: event.eventId, loginHandlers: handlers, roomId: event.roomId });
@@ -926,7 +946,7 @@ export class RuntimeBridge implements PickleBridge {
       targetMessage: { id: event.relatesTo },
     };
     let handlers = 0;
-    for (const client of this.#networkClients.values()) {
+    for (const client of this.#networkClientsForPortal(portal)) {
       if (!hasMethod(client, "handleMatrixReaction")) continue;
       handlers += 1;
       await client.handleMatrixReaction(this.#requestContext(), msg);
@@ -946,7 +966,7 @@ export class RuntimeBridge implements PickleBridge {
       portal: this.#portalForRoom(roomId),
     };
     let handlers = 0;
-    for (const client of this.#networkClients.values()) {
+    for (const client of this.#networkClientsForPortal(msg.portal)) {
       if (!hasMethod(client, "handleMatrixRedaction")) continue;
       handlers += 1;
       await client.handleMatrixRedaction(this.#requestContext(), msg);
@@ -966,12 +986,13 @@ export class RuntimeBridge implements PickleBridge {
     let handlers = 0;
     for (const userId of userIds) {
       if (userId === this.#ownUserId) continue;
+      const portal = this.#portalForRoom(roomId);
       const msg: MatrixTyping = {
-        portal: this.#portalForRoom(roomId),
+        portal,
         typing: true,
         userId,
       };
-      for (const client of this.#networkClients.values()) {
+      for (const client of this.#networkClientsForPortal(portal)) {
         if (!hasMethod(client, "handleMatrixTyping")) continue;
         handlers += 1;
         await client.handleMatrixTyping(this.#requestContext(), msg);
@@ -997,19 +1018,28 @@ export class RuntimeBridge implements PickleBridge {
   }
 
   #scheduleDrain(): void {
+    if (!this.#context) return;
     this.#drainPromise ??= this.#drainRemoteEvents().finally(() => {
       this.#drainPromise = null;
-      if (this.#remoteEvents.length > 0) this.#scheduleDrain();
+      if (this.#context && this.#remoteEvents.length > 0) this.#scheduleDrain();
     });
   }
 
   async #drainRemoteEvents(): Promise<void> {
     if (!this.#context) return;
     while (this.#remoteEvents.length > 0) {
-      const item = this.#remoteEvents.shift();
+      const item = this.#remoteEvents[0];
       if (!item) continue;
       await this.#handleRemoteEvent(item.login, item.event);
+      this.#remoteEvents.shift();
     }
+  }
+
+  #networkClientsForPortal(portal: Portal): NetworkAPI[] {
+    const receiver = portal.portalKey.receiver ?? portal.receiver;
+    if (!receiver) return Array.from(this.#networkClients.values());
+    const client = this.#networkClients.get(receiver);
+    return client ? [client] : [];
   }
 
   async #handleRemoteEvent(_login: UserLogin, event: RemoteEvent): Promise<void> {
@@ -1110,7 +1140,7 @@ export class RuntimeBridge implements PickleBridge {
     return {
       client: this.#matrixClient,
       sendMessage: async (roomId, content) => {
-        const type = typeof content.msgtype === "string" ? "m.room.message" : "m.room.message";
+        const type = "m.room.message";
         const transactionId = `pickle-bridge-${Date.now()}-${Math.random().toString(16).slice(2)}`;
         const result = await this.#matrixClient.raw.request({
           body: content,

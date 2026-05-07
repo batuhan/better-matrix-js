@@ -40,7 +40,7 @@ export interface MatrixAppserviceRegistration {
 }
 export interface MatrixAppserviceInitOptions {
   homeserver: string;
-  homeserverDomain: string;
+  homeserverDomain?: string;
   registration: MatrixAppserviceRegistration;
 }
 export interface MatrixAppserviceInfo {

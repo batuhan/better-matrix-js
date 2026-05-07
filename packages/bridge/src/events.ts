@@ -11,6 +11,8 @@ import type {
 } from "./types";
 
 export function createRemoteMessage<T>(options: CreateRemoteMessageOptions<T>): RemoteMessage | RemoteMessageWithTransactionID {
+  const timestamp = options.timestamp ?? new Date();
+  const streamOrder = options.streamOrder ?? timestamp.getTime();
   const event = {
     convertMessage(ctx: BridgeRequestContext, portal: Portal, intent: MatrixIntent): Promise<ConvertedMessage> {
       return Promise.resolve(options.convert(ctx, portal, intent, options.data));
@@ -25,10 +27,10 @@ export function createRemoteMessage<T>(options: CreateRemoteMessageOptions<T>): 
       return options.sender;
     },
     getStreamOrder() {
-      return options.streamOrder ?? options.timestamp?.getTime() ?? Date.now();
+      return streamOrder;
     },
     getTimestamp() {
-      return options.timestamp ?? new Date();
+      return timestamp;
     },
     getType(): RemoteEventType {
       return options.type ?? "message";

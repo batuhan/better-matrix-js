@@ -1,5 +1,5 @@
 import type { MatrixStore, MatrixAccount, SentEvent } from "@beeper/pickle";
-import type { BridgeState, BridgeStatus, Ghost, MessageRequest, Portal, UserLogin } from "./types";
+import type { BridgeState, BridgeStatus, Ghost, ManagementRoom, MessageRequest, Portal, UserLogin } from "./types";
 
 export interface BridgeDataStore {
   deletePortal(portalKey: string): Promise<void>;
@@ -21,6 +21,7 @@ export interface BridgeDataStore {
   setGhost(ghost: Ghost): Promise<void>;
   setMessage(key: string, message: SentEvent): Promise<void>;
   setMessageRequest(request: MessageRequest): Promise<void>;
+  setManagementRoom(room: ManagementRoom): Promise<void>;
   setPortal(portal: Portal): Promise<void>;
   setUserLogin(login: UserLogin): Promise<void>;
 }
@@ -117,9 +118,17 @@ export class MatrixBridgeDataStore implements BridgeDataStore {
     return this.#set(key("message-request", portalStoreKey(request)), request);
   }
 
+  setManagementRoom(room: ManagementRoom): Promise<void> {
+    return this.#set(key("management-room", room.mxid), room);
+  }
+
   async setPortal(portal: Portal): Promise<void> {
     const portalKey = portalStoreKey(portal);
+    const existing = await this.getPortal(portalKey);
     await this.#set(key("portal", portalKey), portal);
+    if (existing?.mxid && existing.mxid !== portal.mxid) {
+      await this.#store.delete(key("portal-mxid", existing.mxid));
+    }
     if (portal.mxid) await this.#set(key("portal-mxid", portal.mxid), portalKey);
   }
 

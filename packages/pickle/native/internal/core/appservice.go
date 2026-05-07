@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
@@ -48,7 +49,7 @@ type MatrixAppserviceRegistration struct {
 
 type MatrixAppserviceInitOptions struct {
 	Homeserver       string                       `json:"homeserver"`
-	HomeserverDomain string                       `json:"homeserverDomain"`
+	HomeserverDomain string                       `json:"homeserverDomain,omitempty"`
 	Registration     MatrixAppserviceRegistration `json:"registration"`
 }
 
@@ -149,18 +150,26 @@ func (c *Core) handleInitAppservice(ctx context.Context, payload []byte) ([]byte
 	if err := json.Unmarshal(payload, &req); err != nil {
 		return nil, err
 	}
-	if req.Homeserver == "" || req.HomeserverDomain == "" {
-		return nil, errors.New("homeserver and homeserverDomain are required")
+	if req.Homeserver == "" {
+		return nil, errors.New("homeserver is required")
 	}
 	if req.Registration.AppToken == "" || req.Registration.SenderLocalpart == "" || req.Registration.ID == "" {
 		return nil, errors.New("registration id, asToken and senderLocalpart are required")
 	}
+	homeserverDomain := req.HomeserverDomain
+	if homeserverDomain == "" {
+		var err error
+		homeserverDomain, err = homeserverDomainFromURL(req.Homeserver)
+		if err != nil {
+			return nil, err
+		}
+	}
 	as := &matrixAppservice{
 		appToken:         req.Registration.AppToken,
-		botUserID:        id.NewUserID(req.Registration.SenderLocalpart, req.HomeserverDomain),
+		botUserID:        id.NewUserID(req.Registration.SenderLocalpart, homeserverDomain),
 		host:             c.host,
 		homeserver:       req.Homeserver,
-		homeserverDomain: req.HomeserverDomain,
+		homeserverDomain: homeserverDomain,
 		stateStore:       mautrix.NewMemoryStateStore(),
 	}
 	c.appservice = as
@@ -560,10 +569,10 @@ func (as *matrixAppservice) ensureJoined(ctx context.Context, cli *mautrix.Clien
 	if err != nil {
 		bot, botErr := as.client(as.botUserID)
 		if botErr != nil {
-			return err
+			return botErr
 		}
 		if _, inviteErr := bot.InviteUser(ctx, roomID, &mautrix.ReqInviteUser{UserID: cli.UserID}); inviteErr != nil {
-			return err
+			return inviteErr
 		}
 		resp, err = cli.JoinRoomByID(ctx, roomID)
 		if err != nil {
@@ -582,6 +591,18 @@ func appserviceLocalpart(userID id.UserID) string {
 		return string(userID)
 	}
 	return localpart
+}
+
+func homeserverDomainFromURL(rawURL string) (string, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+	hostname := parsed.Hostname()
+	if hostname == "" {
+		return "", fmt.Errorf("failed to derive homeserverDomain from %q", rawURL)
+	}
+	return hostname, nil
 }
 
 func toUserIDs(input []string) []id.UserID {
