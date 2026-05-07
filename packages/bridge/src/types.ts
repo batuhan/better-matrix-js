@@ -511,6 +511,7 @@ export interface PickleBridge {
   getBridgeState(): BridgeState | null;
   getBridgeStatus(): BridgeStatus | null;
   getGhost(id: GhostID): Ghost | null;
+  ghostUserId(localId: string): UserID;
   getMessageRequest(portalKey: PortalKey): Promise<MessageRequest | null>;
   getOwnProfile(): Promise<UserProfile>;
   getPortal(portalKey: PortalKey): Portal | null;
@@ -548,6 +549,7 @@ export interface CreateBeeperBridgeOptions extends Omit<CreateBridgeOptions, "ap
   bridge: string;
   bridgeType?: string;
   getOnly?: boolean;
+  homeserverDomain?: string;
   matrix?: Partial<Omit<BridgeMatrixConfig, "account">>;
   store?: MatrixStore;
 }

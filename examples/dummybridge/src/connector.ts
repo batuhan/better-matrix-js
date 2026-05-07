@@ -26,23 +26,8 @@ export const LOGIN_ID = "dummy-login";
 export const PORTAL_ID = "dummy-room";
 export const DUMMY_CHAT_IDS = ["dummy-chat-alice", "dummy-chat-bob", "dummy-chat-carol"] as const;
 
-export interface DummyConnectorOptions {
-  senderLocalpart?: string;
-  serverName?: string;
-}
-
-export function makeGhostMxid(localId: string, serverName: string, senderLocalpart = "dummybridgebot"): string {
-  const escaped = localId.toLowerCase().replace(/[^a-z0-9._=-]/g, "_");
-  return `@${senderLocalpart}_${escaped}:${serverName}`;
-}
-
 export class DummyConnector implements CommandHandlingBridgeConnector {
-  #options: DummyConnectorOptions;
   #roomCounter = 0;
-
-  constructor(options: DummyConnectorOptions = {}) {
-    this.#options = options;
-  }
 
   createLogin(_ctx: BridgeRequestContext, _user: BridgeUser, flowId: string): LoginProcess {
     return new DummyLoginProcess(flowId);
@@ -133,19 +118,18 @@ export class DummyConnector implements CommandHandlingBridgeConnector {
         const name = command.args.join(" ") || "Pickle DummyBridge";
         const portalId = `dummy-room-${++this.#roomCounter}`;
         const login = { id: LOGIN_ID };
-        const ghostMxid = makeGhostMxid("alice", this.#options.serverName ?? "example", this.#options.senderLocalpart);
         const portal = await ctx.bridge.createPortalRoom({
           invite: [command.sender.userId],
           name,
           portalKey: { id: portalId, receiver: login.id },
           topic: "Created from the DummyBridge management room.",
-          userId: ghostMxid,
+          userId: ctx.bridge.ghostUserId("alice"),
         });
         return reply(`created ${portal.mxid} for ${portalId}`);
       }
       case "message": {
         const text = command.args.join(" ") || "hello from DummyBridge";
-        ctx.queueRemoteEvent({ id: LOGIN_ID }, this.#remoteMessage({
+        ctx.queueRemoteEvent({ id: LOGIN_ID }, this.#remoteMessage(ctx, {
           body: text,
           id: `dummy-command-${Date.now()}`,
           portalId: PORTAL_ID,
@@ -155,7 +139,7 @@ export class DummyConnector implements CommandHandlingBridgeConnector {
       case "messages": {
         const count = Math.max(1, Math.min(Number(command.args[0] ?? 3) || 3, 10));
         for (let index = 0; index < count; index += 1) {
-          ctx.queueRemoteEvent({ id: LOGIN_ID }, this.#remoteMessage({
+          ctx.queueRemoteEvent({ id: LOGIN_ID }, this.#remoteMessage(ctx, {
             body: `dummy message ${index + 1}/${count}`,
             id: `dummy-command-${Date.now()}-${index}`,
             portalId: PORTAL_ID,
@@ -165,7 +149,7 @@ export class DummyConnector implements CommandHandlingBridgeConnector {
       }
       case "ghost": {
         const localId = command.args[0] ?? "alice";
-        return reply(makeGhostMxid(localId, this.#options.serverName ?? "example", this.#options.senderLocalpart));
+        return reply(ctx.bridge.ghostUserId(localId));
       }
       case "kick-me":
         await ctx.client.raw.request({
@@ -180,17 +164,14 @@ export class DummyConnector implements CommandHandlingBridgeConnector {
       case "cat":
         return reply("=^._.^=");
       case "avatar":
-        return reply(makeGhostMxid(command.args[0] ?? "alice", this.#options.serverName ?? "example", this.#options.senderLocalpart));
+        return reply(ctx.bridge.ghostUserId(command.args[0] ?? "alice"));
       default:
         return reply(`unknown command: ${command.command}`);
     }
   }
 
-  loadUserLogin(_ctx: BridgeRequestContext, login: UserLogin): NetworkAPI {
-    const options: DummyNetworkOptions = { login };
-    if (this.#options.senderLocalpart !== undefined) options.senderLocalpart = this.#options.senderLocalpart;
-    if (this.#options.serverName !== undefined) options.serverName = this.#options.serverName;
-    return new DummyNetworkAPI(options);
+  loadUserLogin(ctx: BridgeRequestContext, login: UserLogin): NetworkAPI {
+    return new DummyNetworkAPI({ ghostUserId: (localId) => ctx.bridge.ghostUserId(localId), login });
   }
 
   start(ctx: BridgeContext): void {
@@ -199,13 +180,11 @@ export class DummyConnector implements CommandHandlingBridgeConnector {
 
   stop(): void {}
 
-  #remoteMessage(options: { body: string; id: string; portalId?: string; timestamp?: number }) {
-    const messageOptions: Parameters<typeof remoteMessage>[0] = {
+  #remoteMessage(ctx: BridgeRequestContext, options: { body: string; id: string; portalId?: string; timestamp?: number }) {
+    return remoteMessage({
       ...options,
-    };
-    if (this.#options.senderLocalpart !== undefined) messageOptions.senderLocalpart = this.#options.senderLocalpart;
-    if (this.#options.serverName !== undefined) messageOptions.serverName = this.#options.serverName;
-    return remoteMessage(messageOptions);
+      ghostUserId: (localId) => ctx.bridge.ghostUserId(localId),
+    });
   }
 }
 
@@ -333,20 +312,17 @@ class DummyLoginProcess implements LoginProcess, LoginProcessUserInput, LoginPro
 }
 
 interface DummyNetworkOptions {
+  ghostUserId(localId: string): string;
   login?: UserLogin;
-  senderLocalpart?: string;
-  serverName?: string;
 }
 
 export class DummyNetworkAPI implements NetworkAPI {
+  #ghostUserId: (localId: string) => string;
   #login: UserLogin;
-  #senderLocalpart: string;
-  #serverName: string;
 
-  constructor(options: DummyNetworkOptions = {}) {
+  constructor(options: DummyNetworkOptions) {
+    this.#ghostUserId = options.ghostUserId;
     this.#login = options.login ?? { id: LOGIN_ID };
-    this.#senderLocalpart = options.senderLocalpart ?? "dummybridgebot";
-    this.#serverName = options.serverName ?? "example";
   }
 
   connect(ctx: BridgeRequestContext): void {
@@ -384,16 +360,14 @@ export class DummyNetworkAPI implements NetworkAPI {
   #remoteMessage(options: { body: string; id: string; portalId?: string; timestamp?: number }) {
     return remoteMessage({
       ...options,
+      ghostUserId: this.#ghostUserId,
       loginId: this.#login.id,
-      senderLocalpart: this.#senderLocalpart,
-      serverName: this.#serverName,
     });
   }
 }
 
-function remoteMessage(options: { body: string; id: string; loginId?: string; portalId?: string; senderLocalpart?: string; serverName?: string; timestamp?: number }) {
+function remoteMessage(options: { body: string; ghostUserId(localId: string): string; id: string; loginId?: string; portalId?: string; timestamp?: number }) {
   const portalKey = { id: options.portalId ?? PORTAL_ID, receiver: options.loginId ?? LOGIN_ID };
-  const sender = makeGhostMxid("alice", options.serverName ?? "example", options.senderLocalpart);
   return createRemoteMessage({
     convert: () => ({
       parts: [{
@@ -409,7 +383,7 @@ function remoteMessage(options: { body: string; id: string; loginId?: string; po
     portalKey,
     sender: {
       isFromMe: false,
-      sender,
+      sender: options.ghostUserId("alice"),
     },
     timestamp: new Date(options.timestamp ?? Date.now()),
   });

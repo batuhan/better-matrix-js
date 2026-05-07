@@ -14,6 +14,7 @@ import (
 type matrixAppservice struct {
 	appToken         string
 	botUserID        id.UserID
+	host             RuntimeHost
 	homeserver       string
 	homeserverDomain string
 	stateStore       mautrix.StateStore
@@ -123,6 +124,7 @@ func (c *Core) handleInitAppservice(ctx context.Context, payload []byte) ([]byte
 	as := &matrixAppservice{
 		appToken:         req.Registration.AppToken,
 		botUserID:        id.NewUserID(req.Registration.SenderLocalpart, req.HomeserverDomain),
+		host:             c.host,
 		homeserver:       req.Homeserver,
 		homeserverDomain: req.HomeserverDomain,
 		stateStore:       mautrix.NewMemoryStateStore(),
@@ -310,6 +312,7 @@ func (as *matrixAppservice) client(userID id.UserID) (*mautrix.Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	configureHTTPClient(cli, as.host)
 	cli.SetAppServiceUserID = true
 	cli.StateStore = as.stateStore
 	return cli, nil

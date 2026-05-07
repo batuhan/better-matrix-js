@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { RuntimeBridge } from "@beeper/pickle-bridge";
 import type { MatrixClient, MatrixClientEvent, MatrixStore } from "@beeper/pickle";
 import type { BridgeConnector, BridgeMatrixConfig, MatrixAppserviceInitOptions } from "@beeper/pickle-bridge/types";
-import { DummyConnector, LOGIN_ID, PORTAL_ID, makeGhostMxid } from "../src/connector";
+import { DummyConnector, LOGIN_ID, PORTAL_ID } from "../src/connector";
 
 interface SmokeCalls {
   appserviceInit: MatrixAppserviceInitOptions[];
@@ -76,7 +76,7 @@ const appservice: MatrixAppserviceInitOptions = {
 
 const bridge = new RuntimeBridge({
   appservice,
-  connector: new DummyConnector({ senderLocalpart: "dummybridgebot", serverName: "example" }) as BridgeConnector,
+  connector: new DummyConnector() as BridgeConnector,
   matrix: {
     homeserver: "https://matrix.example",
     store: memoryStore(),
@@ -91,7 +91,7 @@ assert.equal(calls.appserviceInit.length, 1);
 const login = { id: LOGIN_ID };
 await bridge.loadUserLogin(login);
 
-const ghost = makeGhostMxid("alice", "example", "dummybridgebot");
+const ghost = bridge.ghostUserId("alice");
 const portal = await bridge.createPortalRoom({
   name: "Pickle DummyBridge",
   portalKey: { id: PORTAL_ID, receiver: login.id },

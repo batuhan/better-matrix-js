@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { loginWithPassword } from "@beeper/pickle/auth";
 import { createBeeperBridge } from "@beeper/pickle-bridge";
 import type { CreateNodeBeeperBridgeOptions, Portal } from "@beeper/pickle-bridge/types";
-import { DUMMY_CHAT_IDS, DummyConnector, LOGIN_ID, PORTAL_ID, makeGhostMxid } from "./connector";
+import { DUMMY_CHAT_IDS, DummyConnector, LOGIN_ID, PORTAL_ID } from "./connector";
 import { loadEnv, optionalEnv, requiredEnv } from "./env";
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -15,15 +15,13 @@ const account = await loginWithPassword({
   password: requiredEnv("BEEPER_PASSWORD"),
   username: requiredEnv("BEEPER_USERNAME"),
 });
-const serverName = domainFromUserId(account.userId);
 const bridgeName = optionalEnv("DUMMYBRIDGE_BRIDGE_NAME", "sh-dummybridge2") ?? "sh-dummybridge";
-const senderLocalpart = `${bridgeName}bot`;
 
 const bridgeOptions: CreateNodeBeeperBridgeOptions = {
   account,
   bridge: bridgeName,
   bridgeType: "dummybridge-js",
-  connector: new DummyConnector({ senderLocalpart, serverName }),
+  connector: new DummyConnector(),
 };
 const bridgeAddress = optionalEnv("DUMMYBRIDGE_URL");
 if (bridgeAddress !== undefined) bridgeOptions.address = bridgeAddress;
@@ -51,7 +49,6 @@ if (existingManagementRoomId) {
   console.log(`created management room ${room.mxid}`);
 }
 
-const ghostMxid = makeGhostMxid("alice", serverName, senderLocalpart);
 const existingRoomId = optionalEnv("DUMMYBRIDGE_PORTAL_ROOM_ID");
 let portal: Portal | null = null;
 
@@ -71,7 +68,7 @@ if (existingRoomId) {
     name: "Pickle DummyBridge",
     portalKey: { id: PORTAL_ID, receiver: login.id },
     topic: "A TypeScript bridge built with Pickle.",
-    userId: ghostMxid,
+    userId: bridge.ghostUserId("alice"),
   });
   console.log(`created portal ${portal.mxid}`);
 }
@@ -90,7 +87,7 @@ if (optionalEnv("DUMMYBRIDGE_CREATE_DUMMY_CHATS", "1") === "1") {
         name: `Pickle ${titleCase(portalId)}`,
         portalKey: { id: portalId, receiver: login.id },
         topic: "A dummy chat created by the TypeScript Pickle bridge.",
-        userId: ghostMxid,
+        userId: bridge.ghostUserId("alice"),
       });
       await bridge.backfillMessages(login, { portal: room });
       console.log(`created and backfilled dummy chat ${room.mxid}`);
@@ -107,14 +104,6 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     await bridge.stop();
     process.exit(0);
   });
-}
-
-function domainFromUserId(userId: string): string {
-  const index = userId.indexOf(":");
-  if (index === -1 || index === userId.length - 1) {
-    throw new Error(`Cannot infer Matrix server name from ${userId}`);
-  }
-  return userId.slice(index + 1);
 }
 
 function titleCase(value: string): string {

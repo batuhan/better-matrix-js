@@ -99,7 +99,7 @@ export async function createBeeperBridgeWithClient(options: CreateBeeperBridgeOp
     bridge: options.bridge,
     bridgeType: options.bridgeType,
     getOnly: options.getOnly,
-    homeserverDomain: domainFromUserID(options.account.userId),
+    homeserverDomain: options.homeserverDomain,
     token: options.account.accessToken,
   }));
   const runtimeOptions: CreateBridgeOptions = {
@@ -304,12 +304,12 @@ export class RuntimeBridge implements PickleBridge {
     if (!hasMethod(client, "fetchMessages")) {
       throw new Error(`Login ${login.id} does not support backfill`);
     }
-    const task = params.task ?? {
-      cursor: params.cursor,
-      pending: params.pending,
+    const task = params.task ?? stripUndefined({
       portalKey: params.portal.portalKey,
       userLoginId: login.id,
-    };
+      ...(params.cursor !== undefined ? { cursor: params.cursor } : {}),
+      ...(params.pending !== undefined ? { pending: params.pending } : {}),
+    });
     await this.#setLoginBridgeState(login, "BACKFILLING", { message: `Backfilling ${portalKeyString(params.portal.portalKey)}` });
     const response = await (client as BackfillingNetworkAPI).fetchMessages(this.#requestContext(), { ...params, task });
     const portal = params.portal;
@@ -322,22 +322,22 @@ export class RuntimeBridge implements PickleBridge {
       await (client as ChatViewingNetworkAPI).markChatViewed(this.#requestContext(), portal);
     }
     await this.#setLoginBridgeState(login, "CONNECTED");
-    return {
-      cursor: response.cursor,
-      forward: response.forward,
-      hasMore: response.hasMore,
-      markRead: response.markRead ?? params.markRead,
-      pending: params.pending,
-      progress: response.progress ?? params.progress,
+    return stripUndefined({
       queued: false,
-      task: {
+      task: stripUndefined({
         ...task,
         completedAt: new Date(),
-        cursor: response.cursor ?? task.cursor,
         done: !response.hasMore,
         pending: false,
-      },
-    };
+        ...((response.cursor ?? task.cursor) !== undefined ? { cursor: response.cursor ?? task.cursor } : {}),
+      }),
+      ...(response.cursor !== undefined ? { cursor: response.cursor } : {}),
+      ...(response.forward !== undefined ? { forward: response.forward } : {}),
+      ...(response.hasMore !== undefined ? { hasMore: response.hasMore } : {}),
+      ...((response.markRead ?? params.markRead) !== undefined ? { markRead: response.markRead ?? params.markRead } : {}),
+      ...(params.pending !== undefined ? { pending: params.pending } : {}),
+      ...((response.progress ?? params.progress) !== undefined ? { progress: response.progress ?? params.progress } : {}),
+    });
   }
 
   async loadUserLogin(login: UserLogin): Promise<NetworkAPI> {
@@ -390,6 +390,14 @@ export class RuntimeBridge implements PickleBridge {
 
   getGhost(id: string): Ghost | null {
     return this.#ghosts.get(id) ?? null;
+  }
+
+  ghostUserId(localId: string): string {
+    const escaped = escapeMatrixLocalpart(localId);
+    if (this.#appserviceOptions) {
+      return ghostUserIdFromRegistration(this.#appserviceOptions, escaped);
+    }
+    return `@${escaped}:${domainFromUserID(this.#ownerUserId ?? this.#ownUserId ?? "@bridge:example")}`;
   }
 
   registerGhost(ghost: Ghost): void {
@@ -1197,6 +1205,33 @@ function appserviceBotUserId(options: MatrixAppserviceInitOptions): string {
   return `@${options.registration.senderLocalpart}:${options.homeserverDomain}`;
 }
 
+function ghostUserIdFromRegistration(options: MatrixAppserviceInitOptions, escapedLocalId: string): string {
+  const botUserId = appserviceBotUserId(options);
+  for (const namespace of options.registration.namespaces.users ?? []) {
+    const userId = userIdFromNamespaceRegex(namespace.regex, escapedLocalId);
+    if (userId && userId !== botUserId) return userId;
+  }
+  return `@${options.registration.senderLocalpart}_${escapedLocalId}:${options.homeserverDomain}`;
+}
+
+function userIdFromNamespaceRegex(regex: string, escapedLocalId: string): string | null {
+  const match = /^@(.+?)(?:\\?\.?[+*]|\[|\(|\$)/.exec(regex);
+  if (!match?.[1]) return null;
+  const domainMatch = /:([^:]+)$/.exec(regex);
+  if (!domainMatch?.[1]) return null;
+  const prefix = unescapeRegexLiteral(match[1]);
+  const domain = unescapeRegexLiteral(domainMatch[1].replace(/\$$/, ""));
+  return `@${prefix}${escapedLocalId}:${domain}`;
+}
+
+function unescapeRegexLiteral(value: string): string {
+  return value.replace(/\\([\\.^$*+?()[\]{}|/-])/g, "$1");
+}
+
+function escapeMatrixLocalpart(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9._=-]/g, "_");
+}
+
 function bridgeStateEvent(state: BridgeState): BridgeStateEvent {
   switch (state) {
     case "starting":
@@ -1346,6 +1381,25 @@ function eventTimestamp(event: RemoteEvent): number | undefined {
   return undefined;
 }
 
+function messageCheckpointPayload(checkpoint: MessageCheckpoint): Record<string, unknown> {
+  return stripUndefined({
+    client_type: checkpoint.clientType,
+    client_version: checkpoint.clientVersion,
+    event_id: checkpoint.eventId,
+    event_type: checkpoint.eventType,
+    info: checkpoint.info,
+    manual_retry_count: checkpoint.manualRetryCount,
+    message_type: checkpoint.messageType,
+    original_event_id: checkpoint.originalEventId,
+    reported_by: checkpoint.reportedBy,
+    retry_num: checkpoint.retryNum,
+    room_id: checkpoint.roomId,
+    status: checkpoint.status,
+    step: checkpoint.step,
+    timestamp: checkpoint.timestamp instanceof Date ? checkpoint.timestamp.getTime() : checkpoint.timestamp,
+  });
+}
+
 function stringContent(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
@@ -1373,18 +1427,18 @@ function beeperAppServiceOptions(input: {
   bridge: string;
   bridgeType: string | undefined;
   getOnly: boolean | undefined;
-  homeserverDomain: string;
+  homeserverDomain: string | undefined;
   token: string;
 }) {
   const output = {
     bridge: input.bridge,
-    homeserverDomain: input.homeserverDomain,
     token: input.token,
   } as Parameters<typeof createBeeperAppServiceInit>[0];
   if (input.address !== undefined) output.address = input.address;
   if (input.baseDomain !== undefined) output.baseDomain = input.baseDomain;
   if (input.bridgeType !== undefined) output.bridgeType = input.bridgeType;
   if (input.getOnly !== undefined) output.getOnly = input.getOnly;
+  if (input.homeserverDomain !== undefined) output.homeserverDomain = input.homeserverDomain;
   return output;
 }
 
