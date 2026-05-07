@@ -18,6 +18,16 @@ import type {
 export function toClientEvent(event: MatrixCoreEvent): MatrixClientEvent | null {
   if (event.type === "message") return toMessageEvent(event.event);
   if (event.type === "reaction") return toReactionEvent(event.event);
+  if (event.type === "beeper_stream_update") {
+    return stripUndefined({
+      content: event.event.content ?? {},
+      eventId: event.event.eventId,
+      kind: "beeperStreamUpdate" as const,
+      raw: event.event.raw,
+      roomId: event.event.roomId,
+      sender: event.event.sender ? { isMe: false, userId: event.event.sender } : undefined,
+    }) as MatrixClientEvent;
+  }
   if (event.type === "invite") return { kind: "invite", ...event.event };
   if (event.type === "raw_event") return toGenericEvent(event.event, "raw", event.since, event.nextBatch);
   if (event.type === "account_data") return toGenericEvent(event.event, "accountData");

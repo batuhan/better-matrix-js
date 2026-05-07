@@ -109,6 +109,7 @@ export type {
   SetRoomAccountDataOptions,
   SentEvent,
   TypingOptions,
+  UnsubscribeBeeperStreamOptions,
   UnbanUserOptions,
   UploadEncryptedMediaResult,
   UploadMediaOptions,

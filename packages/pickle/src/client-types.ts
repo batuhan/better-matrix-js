@@ -43,6 +43,7 @@ import type {
   ReactionOptions,
   RedactMessageOptions,
   RegisterBeeperStreamOptions,
+  UnsubscribeBeeperStreamOptions,
   ResolveRoomAliasOptions,
   ResolveRoomAliasResult,
   RawRequestOptions,
@@ -124,6 +125,7 @@ export interface MatrixBeeper {
     create(options: CreateBeeperStreamOptions): Promise<{ descriptor: Record<string, unknown> }>;
     publish(options: PublishBeeperStreamOptions): Promise<void>;
     register(options: RegisterBeeperStreamOptions): Promise<void>;
+    unsubscribe(options: UnsubscribeBeeperStreamOptions): Promise<void>;
   };
 }
 

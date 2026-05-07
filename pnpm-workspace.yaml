@@ -2,6 +2,7 @@ packages:
   - "packages/ai-sdk"
   - "packages/chat-adapter"
   - "packages/cloudflare"
+  - "packages/openclaw-matrix"
   - "packages/pickle"
   - "packages/state-file"
   - "packages/state-indexeddb"

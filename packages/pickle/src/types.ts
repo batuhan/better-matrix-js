@@ -61,6 +61,11 @@ export interface PublishBeeperStreamOptions {
   roomId: string;
 }
 
+export interface UnsubscribeBeeperStreamOptions {
+  eventId: string;
+  roomId: string;
+}
+
 export interface SendBeeperEphemeralOptions {
   content?: Record<string, unknown>;
   eventType?: string;
@@ -169,6 +174,15 @@ export interface MatrixReactionEvent extends MatrixBaseEvent {
   roomId: string;
   sender: MatrixEventSender;
   type: "m.reaction" | string;
+}
+
+export interface MatrixBeeperStreamUpdateEvent {
+  content: Record<string, unknown>;
+  eventId: string;
+  kind: "beeperStreamUpdate";
+  raw: unknown;
+  roomId: string;
+  sender?: MatrixEventSender;
 }
 
 export interface MatrixInviteEvent {
@@ -315,6 +329,7 @@ export interface MatrixErrorEvent {
 export type MatrixClientEvent =
   | MatrixMessageEvent
   | MatrixReactionEvent
+  | MatrixBeeperStreamUpdateEvent
   | MatrixInviteEvent
   | MatrixGenericEvent
   | MatrixSyncStatusEvent

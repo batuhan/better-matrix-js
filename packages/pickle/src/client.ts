@@ -83,6 +83,7 @@ class DefaultMatrixClient implements MatrixClient {
         create: (opts) => this.#withCore((core) => core.createBeeperStream(opts)),
         publish: (opts) => this.#withCore((core) => core.publishBeeperStream(opts)),
         register: (opts) => this.#withCore((core) => core.registerBeeperStream(opts)),
+        unsubscribe: (opts) => this.#withCore((core) => core.unsubscribeBeeperStream(opts)),
       },
     };
     this.crypto = {

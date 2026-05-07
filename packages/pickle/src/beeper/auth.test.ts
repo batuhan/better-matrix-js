@@ -52,12 +52,12 @@ describe("beeper auth", () => {
     expect(await requestBody(fetchImpl, 1)).toEqual({
       appType: "pickle",
       email: "bot@example.com",
-      onlyExistingAccounts: true,
+      onlyExistingAccounts: false,
       request: "request-id",
     });
     expect(await requestBody(fetchImpl, 2)).toEqual({
       appType: "pickle",
-      onlyExistingAccounts: true,
+      onlyExistingAccounts: false,
       request: "request-id",
       response: "123456",
     });

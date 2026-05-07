@@ -9,6 +9,7 @@ export interface BeeperAuthOptions {
   getLoginCode?: () => Promise<string> | string;
   initialDeviceDisplayName?: string;
   metadata?: Record<string, unknown>;
+  onlyExistingAccounts?: boolean;
 }
 
 export interface BeeperAuthStartResult {
@@ -36,9 +37,13 @@ export async function createBeeperLogin(options: BeeperAuthOptions): Promise<Mat
   const fetchImpl = options.fetch ?? fetch;
   const domain = BEEPER_ENVIRONMENTS[options.env ?? "production"];
   const start = await startBeeperLogin(fetchImpl, domain);
-  await sendBeeperLoginEmail(fetchImpl, domain, start.requestId, options.email);
+  await sendBeeperLoginEmail(fetchImpl, domain, start.requestId, options.email, {
+    onlyExistingAccounts: options.onlyExistingAccounts ?? false,
+  });
   const code = await getLoginCode(options);
-  const token = await sendBeeperLoginCode(fetchImpl, domain, start.requestId, code);
+  const token = await sendBeeperLoginCode(fetchImpl, domain, start.requestId, code, {
+    onlyExistingAccounts: options.onlyExistingAccounts ?? false,
+  });
   return loginWithMatrixToken({
     fetch: fetchImpl,
     homeserver: `https://matrix.${domain}`,
@@ -82,12 +87,13 @@ export async function sendBeeperLoginEmail(
   fetchImpl: typeof fetch,
   domain: string,
   requestId: string,
-  email: string
+  email: string,
+  options: { onlyExistingAccounts?: boolean } = {}
 ): Promise<void> {
   await beeperRequest(fetchImpl, domain, "/user/login/email", {
     appType: "pickle",
     email,
-    onlyExistingAccounts: true,
+    onlyExistingAccounts: options.onlyExistingAccounts ?? false,
     request: requestId,
   });
 }
@@ -96,11 +102,12 @@ export async function sendBeeperLoginCode(
   fetchImpl: typeof fetch,
   domain: string,
   requestId: string,
-  code: string
+  code: string,
+  options: { onlyExistingAccounts?: boolean } = {}
 ): Promise<BeeperAuthCodeResult> {
   const raw = await beeperRequest(fetchImpl, domain, "/user/login/response", {
     appType: "pickle",
-    onlyExistingAccounts: true,
+    onlyExistingAccounts: options.onlyExistingAccounts ?? false,
     request: requestId,
     response: code,
   });
