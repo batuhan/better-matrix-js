@@ -118,32 +118,34 @@ export class DummyConnector implements CommandHandlingBridgeConnector {
         const name = command.args.join(" ") || "Pickle DummyBridge";
         const portalId = `dummy-room-${++this.#roomCounter}`;
         const login = { id: LOGIN_ID };
-        const portal = await ctx.bridge.createPortalRoom({
+        const portal = await ctx.bridge.createPortal(login, {
+          id: portalId,
           invite: [command.sender.userId],
           name,
-          portalKey: { id: portalId, receiver: login.id },
+          sender: "alice",
           topic: "Created from the DummyBridge management room.",
-          userId: ctx.bridge.ghostUserId("alice"),
         });
         return reply(`created ${portal.mxid} for ${portalId}`);
       }
       case "message": {
         const text = command.args.join(" ") || "hello from DummyBridge";
-        ctx.queueRemoteEvent({ id: LOGIN_ID }, this.#remoteMessage(ctx, {
-          body: text,
+        ctx.queue({ id: LOGIN_ID }).message({
           id: `dummy-command-${Date.now()}`,
-          portalId: PORTAL_ID,
-        }));
+          portal: PORTAL_ID,
+          sender: "alice",
+          text,
+        });
         return reply(`queued message: ${text}`);
       }
       case "messages": {
         const count = Math.max(1, Math.min(Number(command.args[0] ?? 3) || 3, 10));
         for (let index = 0; index < count; index += 1) {
-          ctx.queueRemoteEvent({ id: LOGIN_ID }, this.#remoteMessage(ctx, {
-            body: `dummy message ${index + 1}/${count}`,
+          ctx.queue({ id: LOGIN_ID }).message({
             id: `dummy-command-${Date.now()}-${index}`,
-            portalId: PORTAL_ID,
-          }));
+            portal: PORTAL_ID,
+            sender: "alice",
+            text: `dummy message ${index + 1}/${count}`,
+          });
         }
         return reply(`queued ${count} messages`);
       }
@@ -369,15 +371,7 @@ export class DummyNetworkAPI implements NetworkAPI {
 function remoteMessage(options: { body: string; ghostUserId(localId: string): string; id: string; loginId?: string; portalId?: string; timestamp?: number }) {
   const portalKey = { id: options.portalId ?? PORTAL_ID, receiver: options.loginId ?? LOGIN_ID };
   return createRemoteMessage({
-    convert: () => ({
-      parts: [{
-        content: {
-          body: options.body,
-          msgtype: "m.text",
-        },
-        type: "m.room.message",
-      }],
-    }),
+    convert: () => textMessage(options.body),
     data: {},
     id: options.id,
     portalKey,
@@ -387,6 +381,18 @@ function remoteMessage(options: { body: string; ghostUserId(localId: string): st
     },
     timestamp: new Date(options.timestamp ?? Date.now()),
   });
+}
+
+function textMessage(body: string) {
+  return {
+    parts: [{
+      content: {
+        body,
+        msgtype: "m.text",
+      },
+      type: "m.room.message",
+    }],
+  };
 }
 
 function stringBody(value: unknown): string | null {

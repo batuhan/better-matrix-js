@@ -40,6 +40,8 @@ export interface PortalKey {
   receiver?: UserLoginID;
 }
 
+export type PortalReference = PortalID | PortalKey | Portal;
+
 export interface BridgeName {
   beeperBridgeType?: string;
   defaultCommandPrefix?: string;
@@ -502,7 +504,9 @@ export interface PickleBridge {
   createManagementRoom(options: BridgeCreateManagementRoomOptions): Promise<ManagementRoom>;
   backfill(options: BridgeBackfillOptions): Promise<MatrixAppserviceBatchSendResult>;
   backfillMessages(login: UserLogin, params: FetchMessagesParams): Promise<MatrixAppserviceBatchSendResult>;
+  backfillPortal(login: UserLogin, portal: PortalReference, params?: Omit<FetchMessagesParams, "portal">): Promise<MatrixAppserviceBatchSendResult>;
   queueBackfill(login: UserLogin, params: BackfillQueueParams): Promise<BackfillQueueResult>;
+  createPortal(login: UserLogin, options: BridgeCreatePortalOptions): Promise<Portal>;
   createPortalRoom(options: BridgeCreatePortalRoomOptions): Promise<Portal>;
   downloadMedia(options: DownloadMediaOptions): Promise<DownloadMediaResult>;
   flushRemoteEvents(): Promise<void>;
@@ -516,6 +520,9 @@ export interface PickleBridge {
   getPortalByMXID(mxid: RoomID): Portal | null;
   getUserInfo(userId: UserID): Promise<MatrixUserInfo>;
   loadUserLogin(login: UserLogin): Promise<NetworkAPI>;
+  queue(login: UserLogin): RemoteEventQueue;
+  queueEvent(login: UserLogin, event: RemoteEvent | BridgeRemoteEventOptions): QueueRemoteEventResult;
+  queueMessage<T>(login: UserLogin, options: BridgeRemoteMessageOptions<T>): QueueRemoteEventResult;
   queueRemoteEvent(login: UserLogin, event: RemoteEvent): QueueRemoteEventResult;
   registerGhost(ghost: Ghost): void;
   registerManagementRoom(room: ManagementRoom): void;
@@ -582,6 +589,9 @@ export interface BridgeContext {
   client: MatrixClient;
   dataStore?: BridgeDataStore;
   log: BridgeLogger;
+  queue(login: UserLogin): RemoteEventQueue;
+  queueEvent(login: UserLogin, event: RemoteEvent | BridgeRemoteEventOptions): QueueRemoteEventResult;
+  queueMessage<T>(login: UserLogin, options: BridgeRemoteMessageOptions<T>): QueueRemoteEventResult;
   queueRemoteEvent(login: UserLogin, event: RemoteEvent): QueueRemoteEventResult;
 }
 
@@ -608,6 +618,11 @@ export interface QueueRemoteEventResult {
   queued: boolean;
 }
 
+export interface RemoteEventQueue {
+  event(event: RemoteEvent | BridgeRemoteEventOptions): QueueRemoteEventResult;
+  message<T = unknown>(options: BridgeRemoteMessageOptions<T>): QueueRemoteEventResult;
+}
+
 export interface BridgeCreatePortalRoomOptions {
   avatarUrl?: string;
   info?: ChatInfo;
@@ -619,6 +634,11 @@ export interface BridgeCreatePortalRoomOptions {
   roomType?: "dm" | "group_dm" | "default" | "space" | string;
   topic?: string;
   userId?: string;
+}
+
+export interface BridgeCreatePortalOptions extends Omit<BridgeCreatePortalRoomOptions, "portalKey" | "userId"> {
+  id: PortalID;
+  sender?: GhostID;
 }
 
 export interface BridgeBackfillOptions extends MatrixAppserviceBatchSendOptions {}
@@ -912,6 +932,22 @@ export interface CreateRemoteMessageOptions<T = unknown> {
   timestamp?: Date;
   transactionId?: TransactionID;
   type?: "message" | "message_upsert";
+}
+
+export interface BridgeRemoteEventOptions {
+  event: Omit<RemoteEvent, "getPortalKey" | "getSender"> & Record<string, unknown>;
+  portal: PortalReference;
+  sender?: GhostID | EventSender;
+}
+
+export interface BridgeRemoteMessageOptions<T = unknown> extends Omit<Partial<CreateRemoteMessageOptions<T>>, "portalKey" | "sender"> {
+  content?: Record<string, unknown>;
+  data?: T;
+  id: MessageID;
+  parts?: ConvertedMessagePart[];
+  portal: PortalReference;
+  sender: GhostID | EventSender;
+  text?: string;
 }
 
 export interface MatrixMessageResponse {

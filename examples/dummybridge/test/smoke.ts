@@ -95,26 +95,18 @@ assert.equal(calls.appserviceInit.length, 1);
 const login = { id: LOGIN_ID };
 await bridge.loadUserLogin(login);
 
-const ghost = bridge.ghostUserId("alice");
-const portal = await bridge.createPortalRoom({
+const portal = await bridge.createPortal(login, {
+  id: PORTAL_ID,
   name: "Pickle DummyBridge",
-  portalKey: { id: PORTAL_ID, receiver: login.id },
-  userId: ghost,
+  sender: "alice",
 });
 
 assert.equal(portal.mxid, "!dummy:example");
-assert.equal(calls.createRoom[0]?.userId, ghost);
+assert.equal(calls.createRoom[0]?.userId, bridge.ghostUserId("alice"));
 
-const backfill = await bridge.backfill({
-  events: [{
-    content: { body: "old dummy message", msgtype: "m.text" },
-    sender: ghost,
-    timestamp: Date.now() - 60_000,
-  }],
-  roomId: portal.mxid,
-});
+const backfill = await bridge.backfillPortal(login, portal);
 
-assert.deepEqual(backfill.eventIds, ["$backfill-0"]);
+assert.deepEqual(backfill.eventIds, ["$backfill-0", "$backfill-1", "$backfill-2", "$backfill-3", "$backfill-4"]);
 assert.equal(calls.backfill.length, 1);
 
 await bridge.dispatchMatrixEvent({
@@ -136,7 +128,7 @@ await bridge.flushRemoteEvents();
 
 assert.equal(calls.sendMessage.length, 1);
 assert.equal(calls.sendMessage[0]?.roomId, portal.mxid);
-assert.equal(calls.sendMessage[0]?.userId, ghost);
+assert.equal(calls.sendMessage[0]?.userId, bridge.ghostUserId("alice"));
 assert.equal(calls.sendMessage[0]?.content.body, "dummy echo: hello bridge");
 
 await bridge.stop();

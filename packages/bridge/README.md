@@ -6,7 +6,7 @@ bridgev2-shaped connector interfaces and bridge runtime orchestration.
 
 ```ts
 import { loginWithPassword } from "@beeper/pickle/auth";
-import { createBeeperBridge, createRemoteMessage } from "@beeper/pickle-bridge";
+import { createBeeperBridge } from "@beeper/pickle-bridge";
 import type { BridgeConnector } from "@beeper/pickle-bridge/types";
 
 const account = await loginWithPassword({
@@ -38,26 +38,28 @@ await bridge.start();
 
 const login = { id: "example-login" };
 await bridge.loadUserLogin(login);
-const portal = await bridge.createPortalRoom({
+const portal = await bridge.createPortal(login, {
+  id: "remote-room-id",
   info: { name: "Remote room" },
-  portalKey: { id: "remote-room-id", receiver: login.id },
-  userId: "@example_alice:example.com",
+  sender: "alice",
 });
 
-await bridge.backfillMessages(login, { portal });
+await bridge.backfillPortal(login, portal);
+await bridge.backfillPortal(login, "remote-room-id");
 
-bridge.queueRemoteEvent(login, createRemoteMessage({
-  data: { text: "hello" },
+bridge.queue(login).message({
   id: "remote-message-id",
-  portalKey: { id: "remote-room-id", receiver: login.id },
-  sender: { isFromMe: false, sender: "@example_alice:example.com" },
-  convert: (_ctx, _portal, _intent, data) => ({
-    parts: [{
-      type: "m.room.message",
-      content: { msgtype: "m.text", body: data.text },
-    }],
-  }),
-}));
+  portal: "remote-room-id",
+  sender: "alice",
+  text: "hello",
+});
+
+bridge.queue(login).message({
+  id: "remote-rich-message-id",
+  portal,
+  sender: "alice",
+  content: { msgtype: "m.notice", body: "custom Matrix content" },
+});
 ```
 
 The bridge package is Node-only and uses the same Pickle WASM mechanism as

@@ -65,18 +65,18 @@ if (existingRoomId) {
   console.log(`registered existing portal ${existingRoomId}`);
 } else if (optionalEnv("DUMMYBRIDGE_CREATE_ROOM") === "1") {
   const inviteUser = optionalEnv("DUMMYBRIDGE_INVITE_USER");
-  portal = await bridge.createPortalRoom({
+  portal = await bridge.createPortal(login, {
+    id: PORTAL_ID,
     invite: inviteUser ? [inviteUser] : [],
     name: "Pickle DummyBridge",
-    portalKey: { id: PORTAL_ID, receiver: login.id },
+    sender: "alice",
     topic: "A TypeScript bridge built with Pickle.",
-    userId: bridge.ghostUserId("alice"),
   });
   console.log(`created portal ${portal.mxid}`);
 }
 
 if (portal?.mxid && optionalEnv("DUMMYBRIDGE_BACKFILL_ON_START") === "1") {
-  await bridge.backfillMessages(login, { portal });
+  await bridge.backfillPortal(login, portal);
   console.log(`backfilled ${portal.mxid}`);
 }
 
@@ -84,14 +84,14 @@ if (optionalEnv("DUMMYBRIDGE_CREATE_DUMMY_CHATS", "1") === "1") {
   const count = Math.max(1, Math.min(Number(optionalEnv("DUMMYBRIDGE_DUMMY_CHAT_COUNT", "2")) || 2, DUMMY_CHAT_IDS.length));
   for (const portalId of DUMMY_CHAT_IDS.slice(0, count)) {
     try {
-      const room = await bridge.createPortalRoom({
+      const room = await bridge.createPortal(login, {
+        id: portalId,
         invite: [account.userId],
         name: `Pickle ${titleCase(portalId)}`,
-        portalKey: { id: portalId, receiver: login.id },
+        sender: "alice",
         topic: "A dummy chat created by the TypeScript Pickle bridge.",
-        userId: bridge.ghostUserId("alice"),
       });
-      await bridge.backfillMessages(login, { portal: room });
+      await bridge.backfillPortal(login, room);
       console.log(`created and backfilled dummy chat ${room.mxid}`);
     } catch (error) {
       console.error(`failed to create/backfill dummy chat ${portalId}`, error);

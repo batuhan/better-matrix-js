@@ -2,6 +2,7 @@ import { createMatrixClient } from "@beeper/pickle";
 import type { MatrixAppserviceBatchSendOptions, MatrixAppserviceInitOptions, MatrixClient, MatrixClientEvent, MatrixMessageEvent, MatrixReactionEvent, MatrixSubscription, SentEvent } from "@beeper/pickle";
 import { AppserviceWebsocket, type HTTPProxyRequest, type HTTPProxyResponse } from "./appservice-websocket";
 import { createBeeperAppServiceInit } from "./beeper";
+import { createRemoteMessage } from "./events";
 import type {
   BridgeContext,
   BridgeLogger,
@@ -10,6 +11,7 @@ import type {
   CreateBridgeOptions,
   BridgeBackfillOptions,
   BridgeCreateManagementRoomOptions,
+  BridgeCreatePortalOptions,
   BridgeCreatePortalRoomOptions,
   BackfillingNetworkAPI,
   MatrixAppserviceSendMessageOptions,
@@ -17,7 +19,10 @@ import type {
   NetworkAPI,
   PickleBridge,
   Portal,
+  PortalKey,
+  PortalReference,
   QueueRemoteEventResult,
+  RemoteEventQueue,
   RemoteEvent,
   UserLogin,
   BridgeUser,
@@ -32,9 +37,11 @@ import type {
   MatrixReaction,
   MatrixRedaction,
   MatrixTyping,
+  EventSender,
   MatrixIntent,
   MatrixCommand,
   MatrixCommandResponse,
+  ConvertedMessage,
   ManagementRoom,
   MessageRequest,
   MessageRequestHandlingNetworkAPI,
@@ -57,6 +64,8 @@ import type {
   BridgeStateEvent,
   BridgeStatePayload,
   BridgeBeeperOptions,
+  BridgeRemoteEventOptions,
+  BridgeRemoteMessageOptions,
   BackfillQueueParams,
   BackfillQueueResult,
   ChatViewingNetworkAPI,
@@ -271,6 +280,15 @@ export class RuntimeBridge implements PickleBridge {
     return portal;
   }
 
+  async createPortal(login: UserLogin, options: BridgeCreatePortalOptions): Promise<Portal> {
+    const { id, sender, ...roomOptions } = options;
+    return this.createPortalRoom({
+      ...roomOptions,
+      portalKey: { id, receiver: login.id },
+      ...(sender ? { userId: this.ghostUserId(sender) } : {}),
+    });
+  }
+
   async backfill(options: BridgeBackfillOptions) {
     this.#requestContext();
     return this.#matrixClient.appservice.batchSend(options);
@@ -292,6 +310,38 @@ export class RuntimeBridge implements PickleBridge {
       await (client as ChatViewingNetworkAPI).markChatViewed(this.#requestContext(), portal);
     }
     return result;
+  }
+
+  async backfillPortal(login: UserLogin, portal: PortalReference, params: Omit<Parameters<BackfillingNetworkAPI["fetchMessages"]>[1], "portal"> = {}) {
+    return this.backfillMessages(login, { ...params, portal: this.#resolvePortalReference(login, portal) });
+  }
+
+  queue(login: UserLogin): RemoteEventQueue {
+    return {
+      event: (event) => this.queueEvent(login, event),
+      message: (options) => this.queueMessage(login, options),
+    };
+  }
+
+  queueMessage<T>(login: UserLogin, options: BridgeRemoteMessageOptions<T>): QueueRemoteEventResult {
+    return this.queueRemoteEvent(login, createRemoteMessage({
+      ...options,
+      convert: options.convert ?? (() => convertedMessageFromOptions(options)),
+      data: options.data as T,
+      portalKey: this.#portalKeyReference(login, options.portal),
+      sender: this.#eventSenderReference(login, options.sender),
+    }));
+  }
+
+  queueEvent(login: UserLogin, input: RemoteEvent | BridgeRemoteEventOptions): QueueRemoteEventResult {
+    if (!("event" in input)) return this.queueRemoteEvent(login, input);
+    const portalKey = this.#portalKeyReference(login, input.portal);
+    const sender = this.#eventSenderReference(login, input.sender ?? { isFromMe: true, sender: login.userId ?? this.#ownerUserId ?? "" });
+    return this.queueRemoteEvent(login, {
+      ...input.event,
+      getPortalKey: () => portalKey,
+      getSender: () => sender,
+    });
   }
 
   async queueBackfill(login: UserLogin, params: BackfillQueueParams): Promise<BackfillQueueResult> {
@@ -416,6 +466,24 @@ export class RuntimeBridge implements PickleBridge {
 
   getPortal(portalKey: { id: string; receiver?: string }): Portal | null {
     return this.#portalsByKey.get(portalKeyString(portalKey)) ?? null;
+  }
+
+  #portalKeyReference(login: UserLogin, portal: PortalReference): PortalKey {
+    if (typeof portal === "string") return { id: portal, receiver: login.id };
+    if ("portalKey" in portal) return { ...portal.portalKey, receiver: portal.portalKey.receiver ?? portal.receiver ?? login.id };
+    return { ...portal, receiver: portal.receiver ?? login.id };
+  }
+
+  #resolvePortalReference(login: UserLogin, portal: PortalReference): Portal {
+    if (typeof portal !== "string" && "portalKey" in portal) return portal;
+    const portalKey = this.#portalKeyReference(login, portal);
+    const resolved = this.getPortal(portalKey);
+    if (!resolved) throw new Error(`No portal registered for ${portalKeyString(portalKey)}`);
+    return resolved;
+  }
+
+  #eventSenderReference(login: UserLogin, sender: string | EventSender): EventSender {
+    return typeof sender === "string" ? { isFromMe: false, sender: this.ghostUserId(sender), senderLogin: login.id } : sender;
   }
 
   getPortalByMXID(mxid: string): Portal | null {
@@ -574,6 +642,9 @@ export class RuntimeBridge implements PickleBridge {
       bridge: this,
       client: this.#matrixClient,
       log: defaultLogger,
+      queue: (login) => this.queue(login),
+      queueEvent: (login, event) => this.queueEvent(login, event),
+      queueMessage: (login, options) => this.queueMessage(login, options),
       queueRemoteEvent: (login, event) => this.queueRemoteEvent(login, event),
     };
     if (this.#dataStore) context.dataStore = this.#dataStore;
@@ -1567,4 +1638,21 @@ function stringMap(value: unknown): Record<string, string> {
 
 function randomID(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function convertedMessageFromOptions(options: BridgeRemoteMessageOptions<unknown>): ConvertedMessage {
+  if (options.parts) return { parts: options.parts };
+  if (options.content) return { parts: [{ content: options.content, type: "m.room.message" }] };
+  if (options.text !== undefined) {
+    return {
+      parts: [{
+        content: {
+          body: options.text,
+          msgtype: "m.text",
+        },
+        type: "m.room.message",
+      }],
+    };
+  }
+  throw new Error("queueMessage requires text, content, parts, or convert");
 }
