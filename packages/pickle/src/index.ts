@@ -4,6 +4,7 @@ export { onInvite, onMessage, onRawEvent, onReaction } from "./helpers";
 export type {
   MatrixClient,
   MatrixAccountData,
+  MatrixAppservice,
   MatrixBeeper,
   MatrixMedia,
   MatrixMessages,
@@ -17,6 +18,24 @@ export type {
   MatrixToDevice,
   MatrixUsers,
 } from "./client-types";
+export type {
+  MatrixAppserviceBatchEvent,
+  MatrixAppserviceBatchSendOptions,
+  MatrixAppserviceBatchSendResult,
+  MatrixAppserviceBridgeName,
+  MatrixAppserviceCreateManagementRoomOptions,
+  MatrixAppserviceCreatePortalRoomOptions,
+  MatrixAppserviceCreateRoomOptions,
+  MatrixAppserviceInfo,
+  MatrixAppserviceInitOptions,
+  MatrixAppserviceNamespace,
+  MatrixAppserviceNamespaces,
+  MatrixAppservicePortalKey,
+  MatrixAppserviceRegistration,
+  MatrixAppserviceRoomUserOptions,
+  MatrixAppserviceSendMessageOptions,
+  MatrixAppserviceUserOptions,
+} from "./runtime-types";
 export type {
   ApplySyncResponseOptions,
   AccountDataOptions,

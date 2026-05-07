@@ -16,6 +16,112 @@ export interface MatrixEncryptedFile {
   v: "v2";
 }
 
+export interface MatrixAppserviceNamespace {
+  exclusive: boolean;
+  regex: string;
+}
+export interface MatrixAppserviceNamespaces {
+  aliases?: MatrixAppserviceNamespace[];
+  rooms?: MatrixAppserviceNamespace[];
+  users?: MatrixAppserviceNamespace[];
+}
+export interface MatrixAppserviceRegistration {
+  asToken: string;
+  ephemeralEvents?: boolean;
+  hsToken: string;
+  id: string;
+  msc3202?: boolean;
+  msc4190?: boolean;
+  namespaces: MatrixAppserviceNamespaces;
+  protocols?: string[];
+  rateLimited?: boolean;
+  senderLocalpart: string;
+  url: string;
+}
+export interface MatrixAppserviceInitOptions {
+  homeserver: string;
+  homeserverDomain?: string;
+  registration: MatrixAppserviceRegistration;
+}
+export interface MatrixAppserviceInfo {
+  botUserId: string;
+  id: string;
+}
+export interface MatrixAppserviceUserOptions {
+  userId: string;
+}
+export interface MatrixAppserviceRoomUserOptions {
+  roomId: string;
+  userId: string;
+}
+export interface MatrixAppserviceCreateRoomOptions extends MatrixCreateRoomOptions {
+  userId?: string;
+}
+export interface MatrixAppservicePortalKey {
+  id: string;
+  receiver?: string;
+}
+export interface MatrixAppserviceBridgeName {
+  beeperBridgeType?: string;
+  defaultCommandPrefix?: string;
+  defaultPort?: number /* int */;
+  displayName: string;
+  networkIcon?: string;
+  networkId: string;
+  networkUrl?: string;
+}
+export interface MatrixAppserviceCreatePortalRoomOptions {
+  avatarUrl?: string;
+  autoJoinInvites?: boolean;
+  bridge: MatrixAppserviceBridgeName;
+  bridgeName?: string;
+  initialMembers?: string[];
+  invite?: string[];
+  isDirect?: boolean;
+  messageRequest?: boolean;
+  name?: string;
+  portalKey: MatrixAppservicePortalKey;
+  roomType?: string;
+  topic?: string;
+  userId?: string;
+}
+export interface MatrixAppserviceCreateManagementRoomOptions {
+  autoJoinInvites?: boolean;
+  initialMembers?: string[];
+  invite?: string[];
+  name?: string;
+  topic?: string;
+  userId?: string;
+}
+export interface MatrixAppserviceSendMessageOptions {
+  content: { [key: string]: unknown };
+  eventType?: string;
+  roomId: string;
+  timestamp?: number /* int64 */;
+  transactionId?: string;
+  userId?: string;
+}
+export interface MatrixAppserviceBatchEvent {
+  content: { [key: string]: unknown };
+  eventId?: string;
+  eventType?: string;
+  roomId?: string;
+  sender: string;
+  stateKey?: string;
+  timestamp?: number /* int64 */;
+}
+export interface MatrixAppserviceBatchSendOptions {
+  events: MatrixAppserviceBatchEvent[];
+  forward?: boolean;
+  forwardIfNoMessages?: boolean;
+  markReadBy?: string;
+  roomId: string;
+  sendNotification?: boolean;
+}
+export interface MatrixAppserviceBatchSendResult {
+  eventIds: string[];
+  raw: unknown;
+}
 export interface MatrixCryptoStatus {
   deviceId?: string;
   hasRecoveryKey: boolean;
