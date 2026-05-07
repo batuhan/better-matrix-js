@@ -10,10 +10,12 @@ import type {
   CreateBeeperBridgeOptions,
   CreateBridgeOptions,
   BridgeBackfillOptions,
+  BridgeInfoContent,
   BridgeCreateManagementRoomOptions,
   BridgeCreatePortalOptions,
   BridgeCreatePortalRoomOptions,
   BackfillingNetworkAPI,
+  BackgroundSyncingNetworkAPI,
   MatrixAppserviceSendMessageOptions,
   LoginProcess,
   NetworkAPI,
@@ -33,20 +35,29 @@ import type {
   DownloadMediaResult,
   Ghost,
   MatrixDispatchResult,
+  MatrixEdit,
   MatrixMessage,
   MatrixReaction,
   MatrixRedaction,
   MatrixTyping,
+  MatrixMembership,
   EventSender,
   MatrixIntent,
   MatrixCommand,
   MatrixCommandResponse,
+  MatrixMessageResponse,
   ConvertedMessage,
   ManagementRoom,
   MessageRequest,
   MessageRequestHandlingNetworkAPI,
   RemoteMessage,
   RemoteMessageWithTransactionID,
+  RemoteEdit,
+  RemoteReaction,
+  RemoteReactionRemove,
+  RemoteMessageRemove,
+  RemoteReadReceipt,
+  RemoteTyping,
   RemoteBackfill,
   RemoteChatDelete,
   RemoteChatInfoChange,
@@ -77,6 +88,16 @@ import type {
 } from "./types";
 
 type GenericMatrixEvent = Extract<MatrixClientEvent, { content: Record<string, unknown>; kind: string }>;
+type RemoteQueueItem = {
+  attempts: number;
+  event: RemoteEvent;
+  lastError?: string;
+  login: UserLogin;
+  nextAttemptAt: number;
+};
+
+const remoteEventRetryDelaysMs = [1000, 5000, 15000, 30000];
+const defaultMessageAckTimeoutMs = 60000;
 
 export function createBridge(options: CreateBridgeOptions): PickleBridge {
   return new RuntimeBridge(options, createMatrixClient(options.matrix));
@@ -137,10 +158,11 @@ export class RuntimeBridge implements PickleBridge {
   readonly #ghosts = new Map<string, Ghost>();
   readonly #messageRequests = new Map<string, MessageRequest>();
   readonly #managementRooms = new Map<string, ManagementRoom>();
+  readonly #pendingMessageTimers = new Map<string, ReturnType<typeof setTimeout>>();
   readonly #provisioningLogins = new Map<string, { nextStep: LoginStep; process: LoginProcess }>();
   readonly #portalsByKey = new Map<string, Portal>();
   readonly #portalsByRoom = new Map<string, Portal>();
-  readonly #remoteEvents: Array<{ event: RemoteEvent; login: UserLogin }> = [];
+  readonly #remoteEvents: RemoteQueueItem[] = [];
   readonly #networkClientLoads = new Map<string, Promise<NetworkAPI>>();
   readonly #userLogins = new Map<string, UserLogin>();
   readonly #loginStates = new Map<string, BridgeStatePayload>();
@@ -150,6 +172,7 @@ export class RuntimeBridge implements PickleBridge {
   #bridgeStatus: BridgeStatus | null = null;
   #context: BridgeContext | null = null;
   #drainPromise: Promise<void> | null = null;
+  #drainTimer: ReturnType<typeof setTimeout> | null = null;
   #started = false;
   #ownerUserId: string | null = null;
   #ownUserId: string | null = null;
@@ -206,11 +229,17 @@ export class RuntimeBridge implements PickleBridge {
 
   async stop(): Promise<void> {
     await this.setBridgeState("stopping");
+    if (this.#drainTimer) {
+      clearTimeout(this.#drainTimer);
+      this.#drainTimer = null;
+    }
     for (const login of this.#userLogins.values()) {
       await this.#setLoginBridgeState(login, "BRIDGE_UNREACHABLE");
     }
     const subscriptions = Array.from(this.#subscriptions);
     this.#subscriptions.clear();
+    for (const timer of this.#pendingMessageTimers.values()) clearTimeout(timer);
+    this.#pendingMessageTimers.clear();
     await Promise.allSettled(subscriptions.map((subscription) => subscription.stop()));
     const clients = Array.from(this.#networkClients.values());
     this.#networkClients.clear();
@@ -316,6 +345,35 @@ export class RuntimeBridge implements PickleBridge {
 
   async backfillPortal(login: UserLogin, portal: PortalReference, params: Omit<Parameters<BackfillingNetworkAPI["fetchMessages"]>[1], "portal"> = {}) {
     return this.backfillMessages(login, { ...params, portal: this.#resolvePortalReference(login, portal) });
+  }
+
+  async backgroundSync(login: UserLogin, params?: unknown): Promise<void> {
+    const client = await this.loadUserLogin(login);
+    if (!hasMethod(client, "backgroundSync")) {
+      throw new Error(`Login ${login.id} does not support background sync`);
+    }
+    await this.#setLoginBridgeState(login, "CONNECTING", { message: "Running background sync" });
+    try {
+      await (client as BackgroundSyncingNetworkAPI).backgroundSync(this.#requestContext(), params);
+      await this.#setLoginBridgeState(login, "CONNECTED");
+    } catch (error: unknown) {
+      await this.#setLoginBridgeState(login, "TRANSIENT_DISCONNECT", { error: errorMessage(error) });
+      throw error;
+    }
+  }
+
+  async publishBridgeInfo(roomId: string, content: BridgeInfoContent = {}): Promise<void> {
+    const body = {
+      bridge: this.connector.getName(),
+      capabilities: this.connector.getCapabilities(),
+      version: this.connector.getBridgeInfoVersion(),
+      ...content,
+    };
+    await this.#matrixClient.raw.request({
+      body,
+      method: "PUT",
+      path: `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/com.beeper.bridge.info/${encodeURIComponent(this.connector.getName().networkId)}`,
+    });
   }
 
   queue(login: UserLogin): RemoteEventQueue {
@@ -593,7 +651,7 @@ export class RuntimeBridge implements PickleBridge {
   }
 
   queueRemoteEvent(login: UserLogin, event: RemoteEvent): QueueRemoteEventResult {
-    this.#remoteEvents.push({ event, login });
+    this.#remoteEvents.push({ attempts: 0, event, login, nextAttemptAt: 0 });
     this.#scheduleDrain();
     return { event, queued: true };
   }
@@ -641,6 +699,9 @@ export class RuntimeBridge implements PickleBridge {
       sender: "sender" in event ? event.sender.userId : undefined,
     });
     if (event.kind === "message") {
+      if (matrixMessageIsEdit(event)) {
+        return this.#dispatchMatrixEdit(event);
+      }
       return this.#dispatchMatrixMessage(event);
     }
     if (event.kind === "reaction") {
@@ -651,6 +712,15 @@ export class RuntimeBridge implements PickleBridge {
     }
     if (isGenericEvent(event, "typing")) {
       return this.#dispatchMatrixTyping(event);
+    }
+    if (isGenericEvent(event, "receipt")) {
+      return this.#dispatchMatrixReceipt(event);
+    }
+    if (isGenericEvent(event, "roomState") || isGenericEvent(event, "membership")) {
+      return this.#dispatchMatrixRoomState(event);
+    }
+    if (isGenericEvent(event, "accountData")) {
+      return this.#dispatchMatrixAccountData(event);
     }
     return { dispatched: false, handlers: 0, kind: event.kind };
   }
@@ -728,7 +798,7 @@ export class RuntimeBridge implements PickleBridge {
 
   async #subscribeMatrixEvents(): Promise<void> {
     const subscription = await this.#matrixClient.subscribe(
-      { kind: ["message", "reaction", "redaction", "typing"] },
+      { kind: ["message", "reaction", "redaction", "typing", "receipt", "roomState", "membership", "accountData"] },
       (event) => void this.dispatchMatrixEvent(event).catch((error: unknown) => {
         defaultLogger("error", "matrix_dispatch_failed", { error });
       }),
@@ -841,7 +911,8 @@ export class RuntimeBridge implements PickleBridge {
         if (!hasMethod(client, "handleMatrixMessage")) continue;
         handlers += 1;
         defaultLogger("debug", "matrix_message_to_network", { eventId: event.eventId, loginHandlers: handlers, roomId: event.roomId });
-        await client.handleMatrixMessage(this.#requestContext(), msg);
+        const response = await client.handleMatrixMessage(this.#requestContext(), msg) as MatrixMessageResponse;
+        await this.#handleMatrixMessageResponse(event, response);
       }
       this.#sendMatrixEventCheckpoint(event, "BRIDGE", handlers > 0 ? "SUCCESS" : "UNSUPPORTED");
     } catch (error: unknown) {
@@ -849,6 +920,47 @@ export class RuntimeBridge implements PickleBridge {
       throw error;
     }
     return { dispatched: handlers > 0, eventId: event.eventId, handlers, kind: event.kind, roomId: event.roomId };
+  }
+
+  async #handleMatrixMessageResponse(event: MatrixMessageEvent, response: MatrixMessageResponse | undefined): Promise<void> {
+    if (!response) return;
+    if (response.removePending) {
+      const pendingKey = messagePartKey(response.removePending, "0");
+      this.#messages.delete(pendingKey);
+      const timer = this.#pendingMessageTimers.get(pendingKey);
+      if (timer) clearTimeout(timer);
+      this.#pendingMessageTimers.delete(pendingKey);
+      await this.#dataStore?.deleteMessage(pendingKey);
+    }
+    if (response.db) {
+      const message = {
+        eventId: response.db.mxid ?? event.eventId,
+        raw: event.raw,
+        roomId: event.roomId,
+      };
+      const key = messagePartKey(response.db.id, response.db.partId ?? "0");
+      this.#messages.set(key, message);
+      await this.#dataStore?.setMessage(key, message);
+      if (response.pending) this.#schedulePendingMessageTimeout(key, event);
+      await response.postSave?.(this.#requestContext(), {
+        ...response.db,
+        mxid: message.eventId,
+      });
+    }
+    if (response.pending) {
+      this.#sendMatrixEventCheckpoint(event, "REMOTE", "WILL_RETRY", "Network marked message pending");
+    }
+  }
+
+  #schedulePendingMessageTimeout(key: string, event: MatrixMessageEvent): void {
+    const existing = this.#pendingMessageTimers.get(key);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      this.#pendingMessageTimers.delete(key);
+      this.#sendMatrixEventCheckpoint(event, "REMOTE", "TIMEOUT", "Network did not acknowledge message before timeout");
+    }, defaultMessageAckTimeoutMs);
+    if (typeof timer === "object" && timer && "unref" in timer && typeof timer.unref === "function") timer.unref();
+    this.#pendingMessageTimers.set(key, timer);
   }
 
   async #dispatchMatrixCommand(command: MatrixCommand): Promise<MatrixDispatchResult> {
@@ -1048,6 +1160,35 @@ export class RuntimeBridge implements PickleBridge {
     return { dispatched: handlers > 0, eventId: event.eventId, handlers, kind: event.kind, roomId: event.roomId };
   }
 
+  async #dispatchMatrixEdit(event: MatrixMessageEvent): Promise<MatrixDispatchResult> {
+    if (event.sender.isMe || event.sender.userId === this.#ownUserId) {
+      return { dispatched: false, eventId: event.eventId, handlers: 0, kind: event.kind, roomId: event.roomId };
+    }
+    const targetId = event.replaces ?? (event.relation?.type === "m.replace" ? event.relation.eventId : undefined);
+    if (!targetId) {
+      return { dispatched: false, eventId: event.eventId, handlers: 0, kind: event.kind, roomId: event.roomId };
+    }
+    const portal = this.#portalForRoom(event.roomId);
+    const msg: MatrixEdit = {
+      attachments: event.attachments,
+      content: event.content,
+      event,
+      existing: [],
+      portal,
+      sender: event.sender,
+      targetMessage: { id: targetId, mxid: targetId },
+      text: event.text,
+      ...(event.threadRoot ? { threadRoot: { id: event.threadRoot } } : {}),
+    };
+    let handlers = 0;
+    for (const client of this.#networkClientsForPortal(portal)) {
+      if (!hasMethod(client, "handleMatrixEdit")) continue;
+      handlers += 1;
+      await client.handleMatrixEdit(this.#requestContext(), msg);
+    }
+    return { dispatched: handlers > 0, eventId: event.eventId, handlers, kind: "edit", roomId: event.roomId };
+  }
+
   async #dispatchMatrixRedaction(event: GenericMatrixEvent): Promise<MatrixDispatchResult> {
     const roomId = event.roomId;
     if (!roomId || !event.eventId) {
@@ -1065,7 +1206,7 @@ export class RuntimeBridge implements PickleBridge {
       handlers += 1;
       await client.handleMatrixRedaction(this.#requestContext(), msg);
     }
-    return { dispatched: handlers > 0, eventId: event.eventId, handlers, kind: event.kind, roomId };
+    return stripUndefined({ dispatched: handlers > 0, eventId: event.eventId, handlers, kind: event.kind, roomId }) as MatrixDispatchResult;
   }
 
   async #dispatchMatrixTyping(event: GenericMatrixEvent): Promise<MatrixDispatchResult> {
@@ -1095,6 +1236,76 @@ export class RuntimeBridge implements PickleBridge {
     return { dispatched: handlers > 0, handlers, kind: event.kind, roomId };
   }
 
+  async #dispatchMatrixReceipt(event: GenericMatrixEvent): Promise<MatrixDispatchResult> {
+    const roomId = event.roomId;
+    if (!roomId) return { dispatched: false, handlers: 0, kind: event.kind };
+    const portal = this.#portalForRoom(roomId);
+    let handlers = 0;
+    for (const eventId of matrixReceiptEventIds(event.content)) {
+      const msg = {
+        portal,
+        targetMessage: { id: eventId, mxid: eventId },
+      };
+      for (const client of this.#networkClientsForPortal(portal)) {
+        if (!hasMethod(client, "handleMatrixReadReceipt")) continue;
+        handlers += 1;
+        await client.handleMatrixReadReceipt(this.#requestContext(), msg);
+      }
+    }
+    return { dispatched: handlers > 0, handlers, kind: event.kind, roomId };
+  }
+
+  async #dispatchMatrixRoomState(event: GenericMatrixEvent): Promise<MatrixDispatchResult> {
+    const roomId = event.roomId;
+    if (!roomId) return { dispatched: false, handlers: 0, kind: event.kind };
+    const portal = this.#portalForRoom(roomId);
+    let handlers = 0;
+    for (const client of this.#networkClientsForPortal(portal)) {
+      if (event.type === "m.room.name" && hasMethod(client, "handleMatrixRoomName")) {
+        handlers += 1;
+        await client.handleMatrixRoomName(this.#requestContext(), { name: stringOrUndefined(event.content.name), portal });
+      } else if (event.type === "m.room.topic" && hasMethod(client, "handleMatrixRoomTopic")) {
+        handlers += 1;
+        await client.handleMatrixRoomTopic(this.#requestContext(), { portal, topic: stringOrUndefined(event.content.topic) });
+      } else if (event.type === "m.room.avatar" && hasMethod(client, "handleMatrixRoomAvatar")) {
+        handlers += 1;
+        await client.handleMatrixRoomAvatar(this.#requestContext(), { avatarUrl: stringOrUndefined(event.content.url), portal });
+      } else if (event.type === "m.room.member" && hasMethod(client, "handleMatrixMembership")) {
+        const action = membershipAction(event.content.membership);
+        if (!action) continue;
+        handlers += 1;
+        await client.handleMatrixMembership(this.#requestContext(), {
+          action,
+          portal,
+          userId: event.stateKey ?? event.sender?.userId ?? "",
+        });
+      }
+    }
+    return stripUndefined({ dispatched: handlers > 0, eventId: event.eventId, handlers, kind: event.kind, roomId }) as MatrixDispatchResult;
+  }
+
+  async #dispatchMatrixAccountData(event: GenericMatrixEvent): Promise<MatrixDispatchResult> {
+    const roomId = event.roomId;
+    if (!roomId) return { dispatched: false, handlers: 0, kind: event.kind };
+    const portal = this.#portalForRoom(roomId);
+    let handlers = 0;
+    for (const client of this.#networkClientsForPortal(portal)) {
+      if (event.type === "m.tag" && hasMethod(client, "handleMatrixTag")) {
+        for (const tag of Object.keys(recordValue(event.content.tags) ?? {})) {
+          handlers += 1;
+          await client.handleMatrixTag(this.#requestContext(), { portal, tag, tagged: true });
+        }
+      } else if (event.type === "m.marked_unread" && hasMethod(client, "handleMatrixMarkedUnread")) {
+        handlers += 1;
+        await client.handleMatrixMarkedUnread(this.#requestContext(), { portal, unread: Boolean(event.content.unread) });
+      } else if (event.type === "m.mute" && hasMethod(client, "handleMatrixMute")) {
+        handlers += 1;
+        await client.handleMatrixMute(this.#requestContext(), { muted: Boolean(event.content.muted), portal });
+      }
+    }
+    return { dispatched: handlers > 0, handlers, kind: event.kind, roomId };
+  }
+
   #portalForRoom(roomId: string): Portal {
     const existing = this.#portalsByRoom.get(roomId);
     if (existing) return existing;
@@ -1107,12 +1318,26 @@ export class RuntimeBridge implements PickleBridge {
     return portal;
   }
 
-  #portalForRemoteEvent(event: RemoteEvent): Portal | null {
-    return this.#portalsByKey.get(portalKeyString(event.getPortalKey())) ?? null;
+  async #portalForRemoteEvent(event: RemoteEvent): Promise<Portal | null> {
+    const portalKey = event.getPortalKey();
+    const existing = this.#portalsByKey.get(portalKeyString(portalKey));
+    if (existing) return existing;
+    if ("shouldCreatePortal" in event && typeof event.shouldCreatePortal === "function" && event.shouldCreatePortal()) {
+      const sender = event.getSender().sender;
+      return this.createPortalRoom(stripUndefined({
+        portalKey,
+        userId: sender.startsWith("@") ? sender : undefined,
+      }));
+    }
+    return null;
   }
 
   #scheduleDrain(): void {
     if (!this.#context) return;
+    if (this.#drainTimer) {
+      clearTimeout(this.#drainTimer);
+      this.#drainTimer = null;
+    }
     this.#drainPromise ??= this.#drainRemoteEvents().finally(() => {
       this.#drainPromise = null;
       if (this.#context && this.#remoteEvents.length > 0) this.#scheduleDrain();
@@ -1124,8 +1349,27 @@ export class RuntimeBridge implements PickleBridge {
     while (this.#remoteEvents.length > 0) {
       const item = this.#remoteEvents[0];
       if (!item) continue;
-      await this.#handleRemoteEvent(item.login, item.event);
-      this.#remoteEvents.shift();
+      const waitMs = item.nextAttemptAt - Date.now();
+      if (waitMs > 0) {
+        this.#drainTimer = setTimeout(() => this.#scheduleDrain(), waitMs);
+        return;
+      }
+      try {
+        await this.#handleRemoteEvent(item.login, item.event);
+        this.#remoteEvents.shift();
+      } catch (error: unknown) {
+        item.attempts += 1;
+        item.lastError = errorMessage(error);
+        const delay = remoteEventRetryDelaysMs[Math.min(item.attempts - 1, remoteEventRetryDelaysMs.length - 1)] ?? 30000;
+        item.nextAttemptAt = Date.now() + delay;
+        defaultLogger("warn", "remote_event_retry_scheduled", {
+          attempts: item.attempts,
+          delay,
+          error,
+          type: item.event.getType(),
+        });
+        return;
+      }
     }
   }
 
@@ -1140,6 +1384,30 @@ export class RuntimeBridge implements PickleBridge {
     const type = event.getType();
     if (type === "message" || type === "message_upsert") {
       await this.#handleRemoteMessage(event as RemoteMessage);
+      return;
+    }
+    if (type === "edit") {
+      await this.#handleRemoteEdit(event as RemoteEdit);
+      return;
+    }
+    if (type === "reaction") {
+      await this.#handleRemoteReaction(event as RemoteReaction);
+      return;
+    }
+    if (type === "reaction_remove") {
+      await this.#handleRemoteReactionRemove(event as RemoteReactionRemove);
+      return;
+    }
+    if (type === "message_remove") {
+      await this.#handleRemoteMessageRemove(event as RemoteMessageRemove);
+      return;
+    }
+    if (type === "read_receipt") {
+      await this.#handleRemoteReadReceipt(event as RemoteReadReceipt);
+      return;
+    }
+    if (type === "typing") {
+      await this.#handleRemoteTyping(event as RemoteTyping);
       return;
     }
     if (type === "backfill") {
@@ -1158,7 +1426,7 @@ export class RuntimeBridge implements PickleBridge {
   }
 
   async #handleRemoteMessage(event: RemoteMessage): Promise<void> {
-    const portal = this.#portalForRemoteEvent(event);
+    const portal = await this.#portalForRemoteEvent(event);
     if (!portal?.mxid) {
       throw new Error(`No Matrix room registered for portal ${portalKeyString(event.getPortalKey())}`);
     }
@@ -1177,8 +1445,88 @@ export class RuntimeBridge implements PickleBridge {
     }
   }
 
+  async #getStoredMessage(messageId: string, partId = "0"): Promise<SentEvent | null> {
+    const key = messagePartKey(messageId, partId);
+    return this.#messages.get(key) ?? (await this.#dataStore?.getMessage(key)) ?? null;
+  }
+
+  async #handleRemoteEdit(event: RemoteEdit): Promise<void> {
+    const portal = await this.#portalForRemoteEvent(event);
+    if (!portal?.mxid) {
+      throw new Error(`No Matrix room registered for portal ${portalKeyString(event.getPortalKey())}`);
+    }
+    const targetId = event.getTargetMessage();
+    const existing = await this.#getStoredMessage(targetId);
+    if (!existing?.eventId) {
+      throw new Error(`No Matrix event stored for remote message ${targetId}`);
+    }
+    const converted = await event.convertEdit(this.#requestContext(), portal, this.#matrixIntent(), [{ id: targetId, mxid: existing.eventId }]);
+    for (const [index, part] of converted.modifiedParts.entries()) {
+      const target = index === 0 ? existing : await this.#getStoredMessage(targetId, part.id ?? String(index));
+      if (!target?.eventId) continue;
+      await this.#sendRemoteEditPart(portal.mxid, event.getSender().sender, target.eventId, part.content);
+    }
+  }
+
+  async #handleRemoteReaction(event: RemoteReaction): Promise<void> {
+    const portal = await this.#portalForRemoteEvent(event);
+    if (!portal?.mxid) {
+      throw new Error(`No Matrix room registered for portal ${portalKeyString(event.getPortalKey())}`);
+    }
+    const target = await this.#getStoredMessage(event.getTargetMessage());
+    if (!target?.eventId) throw new Error(`No Matrix event stored for remote message ${event.getTargetMessage()}`);
+    const sent = await this.#sendRemoteReaction(portal.mxid, event.getSender().sender, target.eventId, event.getEmoji());
+    await this.#dataStore?.setReaction(reactionKey(event.getID()), { id: event.getID(), mxid: sent.eventId });
+  }
+
+  async #handleRemoteReactionRemove(event: RemoteReactionRemove): Promise<void> {
+    const portal = await this.#portalForRemoteEvent(event);
+    if (!portal?.mxid) {
+      throw new Error(`No Matrix room registered for portal ${portalKeyString(event.getPortalKey())}`);
+    }
+    const reactionId = event.getID?.();
+    if (reactionId) {
+      const stored = await this.#dataStore?.getReaction(reactionKey(reactionId));
+      if (stored?.mxid) {
+        await this.#redactRemoteEvent(portal.mxid, event.getSender().sender, stored.mxid);
+        await this.#dataStore?.deleteReaction(reactionKey(reactionId));
+        return;
+      }
+    }
+    const target = await this.#getStoredMessage(event.getTargetMessage());
+    const emoji = event.getEmoji?.();
+    if (target?.eventId && emoji) await this.#matrixClient.reactions.redact({ eventId: target.eventId, key: emoji, roomId: portal.mxid });
+  }
+
+  async #handleRemoteMessageRemove(event: RemoteMessageRemove): Promise<void> {
+    const portal = await this.#portalForRemoteEvent(event);
+    if (!portal?.mxid) {
+      throw new Error(`No Matrix room registered for portal ${portalKeyString(event.getPortalKey())}`);
+    }
+    const target = await this.#getStoredMessage(event.getTargetMessage());
+    if (!target?.eventId) throw new Error(`No Matrix event stored for remote message ${event.getTargetMessage()}`);
+    await this.#redactRemoteEvent(portal.mxid, event.getSender().sender, target.eventId);
+  }
+
+  async #handleRemoteReadReceipt(event: RemoteReadReceipt): Promise<void> {
+    const portal = await this.#portalForRemoteEvent(event);
+    if (!portal?.mxid) {
+      throw new Error(`No Matrix room registered for portal ${portalKeyString(event.getPortalKey())}`);
+    }
+    const target = await this.#getStoredMessage(event.getTargetMessage());
+    if (target?.eventId) await this.#matrixClient.receipts.send({ eventId: target.eventId, roomId: portal.mxid });
+  }
+
+  async #handleRemoteTyping(event: RemoteTyping): Promise<void> {
+    const portal = await this.#portalForRemoteEvent(event);
+    if (!portal?.mxid) {
+      throw new Error(`No Matrix room registered for portal ${portalKeyString(event.getPortalKey())}`);
+    }
+    await this.#sendRemoteTyping(portal.mxid, event.getSender().sender, event.isTyping(), event.getTimeoutMs?.());
+  }
+
   async #handleRemoteBackfill(event: RemoteBackfill): Promise<void> {
-    const portal = this.#portalForRemoteEvent(event);
+    const portal = await this.#portalForRemoteEvent(event);
     if (!portal?.mxid) {
       throw new Error(`No Matrix room registered for portal ${portalKeyString(event.getPortalKey())}`);
     }
@@ -1188,7 +1536,7 @@ export class RuntimeBridge implements PickleBridge {
   }
 
   async #handleRemoteChatInfoChange(event: RemoteChatInfoChange): Promise<void> {
-    const portal = this.#portalForRemoteEvent(event);
+    const portal = await this.#portalForRemoteEvent(event);
     if (!portal) return;
     const change = await event.getChatInfoChange(this.#requestContext());
     const metadata = {
@@ -1199,7 +1547,7 @@ export class RuntimeBridge implements PickleBridge {
   }
 
   async #handleRemoteChatDelete(event: RemoteChatDelete): Promise<void> {
-    const portal = this.#portalForRemoteEvent(event);
+    const portal = await this.#portalForRemoteEvent(event);
     if (!portal) return;
     if (event.deleteOnlyForMe()) {
       await this.setPortalMetadata(portal.portalKey, {
@@ -1245,6 +1593,70 @@ export class RuntimeBridge implements PickleBridge {
         return { eventId, raw: result.raw ?? result.body ?? result, roomId };
       },
     };
+  }
+
+  async #sendRemoteEditPart(roomId: string, sender: string, eventId: string, content: Record<string, unknown>): Promise<SentEvent> {
+    if (this.#appserviceOptions && sender.startsWith("@")) {
+      return this.#matrixClient.appservice.sendMessage({
+        content: editContent(eventId, content),
+        roomId,
+        userId: sender,
+      } as MatrixAppserviceSendMessageOptions);
+    }
+    return this.#matrixClient.messages.edit({
+      content,
+      eventId,
+      roomId,
+      text: stringContent(content.body),
+      topLevelContent: editContent(eventId, content),
+    });
+  }
+
+  async #sendRemoteReaction(roomId: string, sender: string, eventId: string, emoji: string): Promise<SentEvent> {
+    if (this.#appserviceOptions && sender.startsWith("@")) {
+      const transactionId = `pickle-bridge-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const result = await this.#matrixClient.raw.request({
+        body: {
+          "m.relates_to": {
+            event_id: eventId,
+            key: emoji,
+            rel_type: "m.annotation",
+          },
+        },
+        method: "PUT",
+        path: `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.reaction/${transactionId}`,
+        query: { user_id: sender },
+      });
+      return { eventId: eventIdFromRaw(result.body), raw: result.raw ?? result.body ?? result, roomId };
+    }
+    return this.#matrixClient.reactions.send({ eventId, key: emoji, roomId });
+  }
+
+  async #redactRemoteEvent(roomId: string, sender: string, eventId: string, reason?: string): Promise<void> {
+    if (this.#appserviceOptions && sender.startsWith("@")) {
+      const transactionId = `pickle-bridge-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      await this.#matrixClient.raw.request({
+        body: stripUndefined({ reason }),
+        method: "PUT",
+        path: `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/redact/${encodeURIComponent(eventId)}/${transactionId}`,
+        query: { user_id: sender },
+      });
+      return;
+    }
+    await this.#matrixClient.messages.redact(stripUndefined({ eventId, reason, roomId }));
+  }
+
+  async #sendRemoteTyping(roomId: string, sender: string, typing: boolean, timeoutMs?: number): Promise<void> {
+    if (this.#appserviceOptions && sender.startsWith("@")) {
+      await this.#matrixClient.raw.request({
+        body: stripUndefined({ timeout: timeoutMs, typing }),
+        method: "PUT",
+        path: `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/typing/${encodeURIComponent(sender)}`,
+        query: { user_id: sender },
+      });
+      return;
+    }
+    await this.#matrixClient.typing.set(stripUndefined({ roomId, timeoutMs, typing }));
   }
 
   async #sendRemoteMessagePart(roomId: string, sender: string, content: Record<string, unknown>, timestamp?: number): Promise<SentEvent> {
@@ -1500,6 +1912,27 @@ function messagePartKey(messageId: string, partId: string): string {
   return `${messageId}\u0000${partId}`;
 }
 
+function reactionKey(reactionId: string): string {
+  return reactionId;
+}
+
+function matrixMessageIsEdit(event: MatrixMessageEvent): boolean {
+  return Boolean(event.edited || event.replaces || event.relation?.type === "m.replace");
+}
+
+function editContent(eventId: string, content: Record<string, unknown>): Record<string, unknown> {
+  const body = stringContent(content.body);
+  return {
+    ...content,
+    body: body ? `* ${body}` : body,
+    "m.new_content": content,
+    "m.relates_to": {
+      event_id: eventId,
+      rel_type: "m.replace",
+    },
+  };
+}
+
 function eventIdFromRaw(body: unknown): string {
   if (body && typeof body === "object" && typeof (body as { event_id?: unknown }).event_id === "string") {
     return (body as { event_id: string }).event_id;
@@ -1539,6 +1972,35 @@ function messageCheckpointPayload(checkpoint: MessageCheckpoint): Record<string,
 
 function stringContent(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function matrixReceiptEventIds(content: Record<string, unknown>): string[] {
+  return Object.entries(content)
+    .filter(([, value]) => recordValue(value))
+    .map(([eventId]) => eventId);
+}
+
+function membershipAction(value: unknown): MatrixMembership["action"] | null {
+  switch (value) {
+    case "invite":
+      return "invite";
+    case "leave":
+      return "leave";
+    case "ban":
+      return "ban";
+    case "join":
+      return null;
+    default:
+      return null;
+  }
 }
 
 type StripUndefined<T extends object> = {

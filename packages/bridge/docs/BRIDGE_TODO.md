@@ -17,18 +17,18 @@ to match bridgev2 concepts while using TypeScript idioms.
 - [x] Appservice batch backfill.
 - [x] Basic live Matrix subscription lifecycle.
 - [x] In-memory portal registration and Matrix room fallback portal keys.
-- [ ] Remote event worker with retry/backoff.
+- [x] Remote event worker with retry/backoff.
 - [ ] Persistent queue.
-- [ ] Background mode.
-- [ ] Command processor.
-- [ ] Bridge info/capabilities room state publishing.
+- [x] Background mode.
+- [x] Command processor.
+- [x] Bridge info/capabilities room state publishing.
 
 ## Matrix/WASM
 
 - [x] Forward `wasmBytes`, `wasmModule`, `wasmUrl` to Pickle.
 - [x] Node entrypoint delegates to `@beeper/pickle/node`.
-- [ ] Browser/worker examples for `wasmModule` and `wasmUrl`.
-- [ ] Direct media helper.
+- [x] Browser/worker examples for `wasmModule` and `wasmUrl`.
+- [x] Direct media helper.
 - [x] Appservice-mode Matrix primitives exposed by Pickle WASM.
 - [ ] Full bridgev2 database-backed Matrix connector.
 
@@ -44,8 +44,8 @@ to match bridgev2 concepts while using TypeScript idioms.
 - [x] `MaxFileSizingNetwork`.
 - [x] `NetworkResettingNetwork`.
 - [x] `PushParsingNetwork`.
-- [ ] Config loader/upgrader implementation.
-- [ ] DB metadata registration/migrations.
+- [x] Config loader/upgrader implementation.
+- [x] DB metadata registration/migrations.
 
 ## Network API Interfaces
 
@@ -69,9 +69,9 @@ to match bridgev2 concepts while using TypeScript idioms.
   - [x] room name/topic/avatar
   - [x] mute/tag/marked unread/delete chat
 - [x] Dispatch Pickle message/reaction/redaction/typing events to outbound handlers.
-- [ ] Dispatch Pickle edit/read receipt/room state/account data events to outbound handlers.
-- [ ] Pending message echo matching.
-- [ ] No-echo/no-ack timeout handling.
+- [x] Dispatch Pickle edit/read receipt/room state/account data events to outbound handlers.
+- [x] Pending message echo matching.
+- [x] No-echo/no-ack timeout handling.
 
 ## Login Interfaces
 
@@ -81,9 +81,9 @@ to match bridgev2 concepts while using TypeScript idioms.
 - [x] `LoginProcessUserInput`.
 - [x] `LoginProcessCookies`.
 - [x] `LoginFlow`, `LoginStep`, `LoginStepType`.
-- [ ] Login session persistence.
-- [ ] Provisioning HTTP surface.
-- [ ] Reauth/override flow.
+- [x] Login session persistence.
+- [x] Provisioning HTTP surface.
+- [x] Reauth/override flow.
 
 ## Remote Event Interfaces
 
@@ -118,30 +118,30 @@ to match bridgev2 concepts while using TypeScript idioms.
 - [x] `RemoteDeliveryReceipt`.
 - [x] `RemoteMarkUnread`.
 - [x] `RemoteTyping`.
-- [ ] Portal resolution and room creation from remote events.
-- [ ] Message conversion to Matrix event sends.
+- [x] Portal resolution and room creation from remote events.
+- [x] Message conversion to Matrix event sends.
 - [x] Basic remote message conversion to Matrix room sends.
-- [ ] Edit/reaction/redaction conversion to Matrix sends.
-- [ ] Backfill import.
+- [x] Edit/reaction/redaction conversion to Matrix sends.
+- [x] Backfill import.
 
 ## Storage Models
 
 - [x] Type shells for `BridgeUser`, `UserLogin`, `Portal`, `Ghost`, `Message`, `Reaction`.
-- [ ] Persistent stores for users, logins, portals, ghosts, messages, reactions.
-- [ ] Metadata codecs and migrations.
-- [ ] ID helper utilities.
+- [x] Persistent stores for users, logins, portals, ghosts, messages, reactions.
+- [x] Metadata codecs and migrations.
+- [x] ID helper utilities.
 
 ## Examples
 
-- [ ] `examples/echo-bridge`.
+- [x] `examples/echo-bridge`.
 - [ ] Port `bots/dummybot` to `@beeper/pickle-bridge`.
-- [ ] Minimal QR login bridge example.
-- [ ] Minimal cookie login bridge example.
+- [x] Minimal QR login bridge example.
+- [x] Minimal cookie login bridge example.
 
 ## Tests
 
-- [ ] Type conformance tests for golden bridge patterns.
+- [x] Type conformance tests for golden bridge patterns.
 - [x] Runtime start/stop tests in `bridge.test.ts`.
-- [ ] WASM option forwarding tests.
+- [x] WASM option forwarding tests.
 - [x] Remote event queue tests in `bridge.test.ts` for queued remote event draining.
 - [x] Matrix sync dispatch tests in `bridge.test.ts` for Matrix event dispatch.

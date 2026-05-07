@@ -505,6 +505,7 @@ export interface PickleBridge {
   backfill(options: BridgeBackfillOptions): Promise<MatrixAppserviceBatchSendResult>;
   backfillMessages(login: UserLogin, params: FetchMessagesParams): Promise<MatrixAppserviceBatchSendResult>;
   backfillPortal(login: UserLogin, portal: PortalReference, params?: Omit<FetchMessagesParams, "portal">): Promise<MatrixAppserviceBatchSendResult>;
+  backgroundSync(login: UserLogin, params?: unknown): Promise<void>;
   queueBackfill(login: UserLogin, params: BackfillQueueParams): Promise<BackfillQueueResult>;
   createPortal(login: UserLogin, options: BridgeCreatePortalOptions): Promise<Portal>;
   createPortalRoom(options: BridgeCreatePortalRoomOptions): Promise<Portal>;
@@ -520,6 +521,7 @@ export interface PickleBridge {
   getPortalByMXID(mxid: RoomID): Portal | null;
   getUserInfo(userId: UserID): Promise<MatrixUserInfo>;
   loadUserLogin(login: UserLogin): Promise<NetworkAPI>;
+  publishBridgeInfo(roomId: RoomID, content?: BridgeInfoContent): Promise<void>;
   queue(login: UserLogin): RemoteEventQueue;
   queueRemoteEvent(login: UserLogin, event: RemoteEvent): QueueRemoteEventResult;
   registerGhost(ghost: Ghost): void;

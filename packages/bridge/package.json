@@ -28,6 +28,18 @@
       "types": "./dist/beeper.d.ts",
       "import": "./dist/beeper.js"
     },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js"
+    },
+    "./ids": {
+      "types": "./dist/ids.d.ts",
+      "import": "./dist/ids.js"
+    },
+    "./metadata": {
+      "types": "./dist/metadata.d.ts",
+      "import": "./dist/metadata.js"
+    },
     "./store": {
       "types": "./dist/store.d.ts",
       "import": "./dist/store.js"

@@ -6,9 +6,15 @@ import { createBridgeDataStore } from "./store";
 import type { CreateNodeBeeperBridgeOptions, CreateNodeBridgeOptions, PickleBridge } from "./types";
 
 export { createBridgeDataStore, MatrixBridgeDataStore } from "./store";
+export { loadBridgeConfig, loadConnectorConfig } from "./config";
+export { createPortalKey, escapeMatrixLocalpart, ghostLocalpart, messagePartKey, portalKeyToString } from "./ids";
+export { jsonMetadataCodec, metadataEnvelope, migrateMetadata } from "./metadata";
 export { BeeperBridgeManagerClient, createBeeperAppService, createBeeperAppServiceInit, createBeeperBridgeManagerClient, fetchBeeperBridges } from "./beeper";
 export { createRemoteMessage } from "./events";
 export type * from "./beeper";
+export type * from "./config";
+export type * from "./ids";
+export type * from "./metadata";
 export type * from "./store";
 export type * from "./types";
 export { RuntimeBridge } from "./bridge";
