@@ -646,6 +646,7 @@ export interface BridgeRemoteBackfillMessageOptions<T = unknown> extends Omit<Br
 export interface BridgeCreatePortalRoomOptions {
   avatarUrl?: string;
   info?: ChatInfo;
+  initialState?: { content: Record<string, unknown>; stateKey: string; type: string }[];
   invite?: UserID[];
   messageRequest?: boolean;
   metadata?: unknown;

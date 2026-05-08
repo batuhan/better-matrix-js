@@ -20,7 +20,7 @@ export function createBridge(options: CreateNodeBridgeOptions): PickleBridge {
 
 export async function createBeeperBridge(options: CreateNodeBeeperBridgeOptions): Promise<PickleBridge> {
   const store = options.store ?? options.matrix?.store ?? createFileMatrixStore(defaultDataDir(options));
-  const appservice = await createBeeperAppServiceInit({
+  const appservice = options.matrix?.appservice ?? await createBeeperAppServiceInit({
     bridge: options.bridge,
     token: options.account.accessToken,
     ...(options.address ? { address: options.address } : {}),
@@ -31,7 +31,7 @@ export async function createBeeperBridge(options: CreateNodeBeeperBridgeOptions)
   });
   const matrix = {
     ...options.matrix,
-    appservice: options.matrix?.appservice ?? appservice,
+    appservice,
     deviceId: options.matrix?.deviceId ?? await getOrCreateAppserviceDeviceId(store, options.bridge),
     homeserver: options.matrix?.homeserver ?? appservice.homeserver,
     store,

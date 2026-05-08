@@ -92,6 +92,7 @@ type MatrixAppserviceCreatePortalRoomOptions struct {
 	AutoJoinInvites bool                       `json:"autoJoinInvites,omitempty"`
 	Bridge          MatrixAppserviceBridgeName `json:"bridge"`
 	BridgeName      string                     `json:"bridgeName,omitempty"`
+	InitialState    []MatrixRoomStateInput     `json:"initialState,omitempty"`
 	InitialMembers  []string                   `json:"initialMembers,omitempty"`
 	Invite          []string                   `json:"invite,omitempty"`
 	IsDirect        bool                       `json:"isDirect,omitempty"`
@@ -297,6 +298,14 @@ func (as *matrixAppservice) makePortalCreateRoomRequest(req MatrixAppserviceCrea
 		bridgeInfoStateKey = req.Bridge.NetworkID
 	}
 	bridgeInfo := bridgeInfoContent(req, bridgeBot, roomType)
+	for _, state := range req.InitialState {
+		stateKey := state.StateKey
+		createReq.InitialState = append(createReq.InitialState, &event.Event{
+			Type:     event.NewEventType(state.Type),
+			StateKey: &stateKey,
+			Content:  event.Content{Raw: state.Content},
+		})
+	}
 	createReq.InitialState = append(createReq.InitialState,
 		bridgeStateEvent(event.StateHalfShotBridge, bridgeInfoStateKey, bridgeInfo),
 		bridgeStateEvent(event.StateBridge, bridgeInfoStateKey, bridgeInfo),

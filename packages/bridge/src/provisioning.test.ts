@@ -32,7 +32,7 @@ describe("handleProvisioningHTTPProxy", () => {
     await expect(handleProvisioningHTTPProxy(runtime, { logins: new Map() }, {
       method: "POST",
       path: "/_matrix/provision/v3/create_dm/intern",
-      query: "login_id=intern",
+      query: "login_id=cloud-login-id",
     })).resolves.toMatchObject({
       body: {
         dm_room_mxid: "!sidechat:example",

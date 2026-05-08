@@ -75,6 +75,7 @@ export interface MatrixAppserviceCreatePortalRoomOptions {
   autoJoinInvites?: boolean;
   bridge: MatrixAppserviceBridgeName;
   bridgeName?: string;
+  initialState?: MatrixRoomStateInput[];
   initialMembers?: string[];
   invite?: string[];
   isDirect?: boolean;

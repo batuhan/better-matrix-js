@@ -83,7 +83,10 @@ export async function handleProvisioningHTTPProxy(runtime: ProvisioningRuntime, 
 function provisioningLogin(runtime: ProvisioningRuntime, request: HTTPProxyRequest): UserLogin | null {
   const logins = runtime.listLogins();
   const loginId = queryParam(request.query, "login_id");
-  if (loginId) return logins.find((login) => login.id === loginId) ?? null;
+  if (loginId) {
+    const matching = logins.find((login) => login.id === loginId);
+    if (matching) return matching;
+  }
   return logins[0] ?? null;
 }
 

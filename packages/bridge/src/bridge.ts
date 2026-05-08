@@ -88,7 +88,7 @@ export function createBridge(options: CreateBridgeOptions): PickleBridge {
 
 export async function createBeeperBridge(options: CreateBeeperBridgeOptions): Promise<PickleBridge> {
   if (!options.store) throw new Error("createBeeperBridge requires store outside the Node entrypoint");
-  const appservice = await createBeeperAppServiceInit(beeperAppServiceOptions({
+  const appservice = options.matrix?.appservice ?? await createBeeperAppServiceInit(beeperAppServiceOptions({
     address: options.address,
     baseDomain: options.baseDomain,
     bridge: options.bridge,
@@ -111,7 +111,7 @@ export async function createBeeperBridge(options: CreateBeeperBridgeOptions): Pr
 export async function createBeeperBridgeWithClient(options: CreateBeeperBridgeOptions, client: MatrixClient): Promise<PickleBridge> {
   const store = options.store ?? options.matrix?.store;
   if (!store) throw new Error("createBeeperBridgeWithClient requires store");
-  const appservice = await createBeeperAppServiceInit(beeperAppServiceOptions({
+  const appservice = options.matrix?.appservice ?? await createBeeperAppServiceInit(beeperAppServiceOptions({
     address: options.address,
     baseDomain: options.baseDomain,
     bridge: options.bridge,
@@ -284,6 +284,7 @@ export class RuntimeBridge implements PickleBridge {
       avatarUrl: info.avatar?.mxc ?? options.avatarUrl,
       bridge: this.connector.getName(),
       bridgeName: this.#beeperOptions?.bridge,
+      initialState: options.initialState,
       initialMembers: this.#beeperOptions ? invite : undefined,
       invite,
       isDirect: options.roomType === "dm",
