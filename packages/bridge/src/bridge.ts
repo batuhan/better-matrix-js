@@ -3,6 +3,8 @@ import type { MatrixAppserviceBatchSendOptions, MatrixAppserviceInitOptions, Mat
 import { AppserviceWebsocket, type HTTPProxyRequest, type HTTPProxyResponse } from "./appservice-websocket";
 import { createBeeperAppServiceInit } from "./beeper";
 import { createRemoteMessage } from "./events";
+import { getOrCreateAppserviceDeviceId } from "./store";
+import { handleProvisioningHTTPProxy } from "./provisioning";
 import type {
   BridgeContext,
   BridgeLogger,
@@ -60,7 +62,6 @@ import type {
   LoginProcessDisplayAndWait,
   LoginProcessUserInput,
   LoginProcessWithOverride,
-  LoginStep,
   LoginUserInput,
   BridgeStateEvent,
   BridgeStatePayload,
@@ -76,6 +77,7 @@ import type {
   MessageCheckpointStatus,
   MessageCheckpointStep,
   HTTPProxyHandlingBridgeConnector,
+  LoginStep,
 } from "./types";
 
 type GenericMatrixEvent = Extract<MatrixClientEvent, { content: Record<string, unknown>; kind: string }>;
@@ -98,6 +100,7 @@ export async function createBeeperBridge(options: CreateBeeperBridgeOptions): Pr
   const matrix = {
     ...options.matrix,
     appservice: options.matrix?.appservice ?? appservice,
+    deviceId: options.matrix?.deviceId ?? await getOrCreateAppserviceDeviceId(options.store, options.bridge),
     homeserver: options.matrix?.homeserver ?? appservice.homeserver,
     store: options.store,
     token: options.matrix?.token ?? appservice.registration.asToken,
@@ -120,6 +123,7 @@ export async function createBeeperBridgeWithClient(options: CreateBeeperBridgeOp
   const matrix = {
     ...options.matrix,
     appservice: options.matrix?.appservice ?? appservice,
+    deviceId: options.matrix?.deviceId ?? await getOrCreateAppserviceDeviceId(store, options.bridge),
     homeserver: options.matrix?.homeserver ?? appservice.homeserver,
     store,
     token: options.matrix?.token ?? appservice.registration.asToken,
@@ -779,57 +783,17 @@ export class RuntimeBridge implements PickleBridge {
     defaultLogger("debug", "provisioning_http_request", { method, path });
     if (hasMethod(this.connector, "handleHTTPProxy")) {
       const handled = await (this.connector as HTTPProxyHandlingBridgeConnector).handleHTTPProxy(this.#requestContext(), request);
-      if (handled) return handled;
+      if (handled) return normalizeHTTPProxyResponse(handled);
     }
-    if (method === "GET" && path === "/_matrix/provision/v3/capabilities") {
-      return jsonHTTPResponse(200, provisioningCapabilities(this.connector.getCapabilities()));
-    }
-    if (method === "GET" && path === "/_matrix/provision/v3/login/flows") {
-      return jsonHTTPResponse(200, { flows: this.connector.getLoginFlows() });
-    }
-    if (method === "GET" && path === "/_matrix/provision/v3/logins") {
-      return jsonHTTPResponse(200, { login_ids: Array.from(this.#networkClients.keys()) });
-    }
-    const startMatch = /^\/_matrix\/provision\/v3\/login\/start\/([^/]+)$/.exec(path);
-    if (method === "POST" && startMatch) {
-      const flowId = decodeURIComponent(startMatch[1] ?? "");
-      defaultLogger("info", "provisioning_login_start", { flowId });
-      const process = await this.createLogin({ id: this.#ownerUserId ?? this.#ownUserId ?? "" }, flowId);
-      const step = await process.start();
-      const loginId = randomID("login");
-      this.#provisioningLogins.set(loginId, { nextStep: step, process });
-      return jsonHTTPResponse(200, loginStepResponse(loginId, step));
-    }
-    const stepMatch = /^\/_matrix\/provision\/v3\/login\/step\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(path);
-    if (method === "POST" && stepMatch) {
-      const loginId = decodeURIComponent(stepMatch[1] ?? "");
-      const stepId = decodeURIComponent(stepMatch[2] ?? "");
-      const stepType = decodeURIComponent(stepMatch[3] ?? "");
-      const login = this.#provisioningLogins.get(loginId);
-      if (!login) return jsonHTTPResponse(404, matrixError("M_NOT_FOUND", "Login not found"));
-      if (login.nextStep.stepId !== stepId) return jsonHTTPResponse(400, matrixError("M_BAD_STATE", "Step ID does not match"));
-      if (login.nextStep.type !== stepType) return jsonHTTPResponse(400, matrixError("M_BAD_STATE", "Step type does not match"));
-      let nextStep: LoginStep;
-      if (stepType === "user_input" && hasMethod(login.process, "submitUserInput")) {
-        nextStep = await (login.process as LoginProcessUserInput).submitUserInput(this.#requestContext(), stringMap(request.body));
-      } else if (stepType === "cookies" && hasMethod(login.process, "submitCookies")) {
-        nextStep = await (login.process as LoginProcessCookies).submitCookies(this.#requestContext(), stringMap(request.body));
-      } else if (stepType === "display_and_wait" && hasMethod(login.process, "wait")) {
-        nextStep = await (login.process as LoginProcessDisplayAndWait).wait(this.#requestContext());
-      } else {
-        return jsonHTTPResponse(400, matrixError("M_BAD_REQUEST", `Unsupported login step type ${stepType}`));
-      }
-      if (nextStep.type === "complete") {
-        defaultLogger("info", "provisioning_login_complete", { loginId });
-        this.#provisioningLogins.delete(loginId);
-        if (nextStep.complete?.userLogin) await this.loadUserLogin(nextStep.complete.userLogin);
-        else if (nextStep.complete?.userLoginId) await this.loadUserLogin({ id: nextStep.complete.userLoginId });
-      } else {
-        login.nextStep = nextStep;
-      }
-      return jsonHTTPResponse(200, loginStepResponse(loginId, nextStep));
-    }
-    return null;
+    return handleProvisioningHTTPProxy({
+      capabilities: () => this.connector.getCapabilities(),
+      createLogin: (flowId) => this.createLogin({ id: this.#ownerUserId ?? this.#ownUserId ?? "" }, flowId),
+      listLogins: () => Array.from(this.#userLogins.values()),
+      loginFlows: () => this.connector.getLoginFlows(),
+      loadLogin: (login) => this.loadUserLogin(login).then(() => undefined),
+      requestContext: () => this.#requestContext(),
+      resolveIdentifier: (login, identifier, createDM) => this.resolveIdentifier(login, { createDM, identifier }),
+    }, { logins: this.#provisioningLogins }, request);
   }
 
   async #dispatchMatrixMessage(event: MatrixMessageEvent): Promise<MatrixDispatchResult> {
@@ -1441,20 +1405,6 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function provisioningCapabilities(capabilities: { provisioning?: { groupCreation?: unknown; resolveIdentifier?: unknown } }): unknown {
-  const provisioning = capabilities.provisioning;
-  if (provisioning) {
-    return {
-      group_creation: provisioning.groupCreation ?? {},
-      resolve_identifier: provisioning.resolveIdentifier ?? {},
-    };
-  }
-  return {
-    group_creation: {},
-    resolve_identifier: {},
-  };
-}
-
 function hasPushURL(url: string | undefined): boolean {
   return Boolean(url && url !== "websocket");
 }
@@ -1608,22 +1558,15 @@ function beeperAppServiceOptions(input: {
   return output;
 }
 
-function jsonHTTPResponse(status: number, body: unknown): HTTPProxyResponse {
+function normalizeHTTPProxyResponse(response: { body?: unknown; headers?: Record<string, string | string[]>; status: number }): HTTPProxyResponse {
+  const headers: Record<string, string[]> = {};
+  for (const [key, value] of Object.entries(response.headers ?? {})) {
+    headers[key] = Array.isArray(value) ? value : [value];
+  }
   return {
-    body,
-    headers: { "content-type": ["application/json"] },
-    status,
-  };
-}
-
-function matrixError(errcode: string, error: string): Record<string, string> {
-  return { errcode, error };
-}
-
-function loginStepResponse(loginId: string, step: LoginStep): Record<string, unknown> {
-  return {
-    login_id: loginId,
-    ...loginStepJSON(step),
+    body: response.body,
+    headers,
+    status: response.status,
   };
 }
 
@@ -1631,55 +1574,6 @@ function loginStepText(step: LoginStep): string {
   const lines = [`Step ${step.stepId} (${step.type})`];
   if (step.instructions) lines.push(step.instructions);
   return lines.join("\n");
-}
-
-function loginStepJSON(step: LoginStep): Record<string, unknown> {
-  return stripUndefined({
-    complete: step.complete ? stripUndefined({
-      user_login_id: step.complete.userLoginId,
-    }) : undefined,
-    cookies: step.cookies ? stripUndefined({
-      extract_js: step.cookies.extractJs,
-      fields: step.cookies.fields.map((field) => stripUndefined({
-        id: field.id,
-        pattern: field.pattern,
-        required: field.required,
-        sources: field.sources.map((source) => stripUndefined({
-          cookie_domain: source.cookieDomain,
-          name: source.name,
-          request_url_regex: source.requestUrlRegex,
-          type: source.type,
-        })),
-      })),
-      url: step.cookies.url,
-      user_agent: step.cookies.userAgent,
-      wait_for_url_pattern: step.cookies.waitForUrlPattern,
-    }) : undefined,
-    display_and_wait: step.displayAndWait ? stripUndefined({
-      data: step.displayAndWait.data,
-      image_url: step.displayAndWait.imageUrl,
-      type: step.displayAndWait.type,
-    }) : undefined,
-    instructions: step.instructions,
-    step_id: step.stepId,
-    type: step.type,
-    user_input: step.userInput ? {
-      fields: step.userInput.fields.map((field) => stripUndefined({
-        default_value: field.defaultValue,
-        description: field.description,
-        id: field.id,
-        name: field.name,
-        options: field.options,
-        pattern: field.pattern,
-        type: field.type,
-      })),
-    } : undefined,
-  });
-}
-
-function stringMap(value: unknown): Record<string, string> {
-  if (!value || typeof value !== "object") return {};
-  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
 }
 
 function randomID(prefix: string): string {

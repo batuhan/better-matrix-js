@@ -16,6 +16,7 @@ export interface MatrixClientOptions {
   appservice?: MatrixAppserviceInitOptions;
   beeper?: boolean;
   boot?: boolean;
+  deviceId?: string;
   fetch?: typeof fetch;
   homeserver?: string;
   logger?: MatrixLogger;

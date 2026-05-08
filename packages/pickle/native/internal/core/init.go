@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"maunium.net/go/mautrix"
@@ -117,9 +118,6 @@ func (c *Core) initClient(ctx context.Context, req MatrixCoreInitOptions) (*maut
 	if req.Appservice != nil {
 		botUserID := id.NewUserID(req.Appservice.Registration.SenderLocalpart, req.Appservice.HomeserverDomain)
 		deviceID := id.DeviceID(req.DeviceID)
-		if deviceID == "" {
-			deviceID = id.DeviceID("PICKLE_" + req.Appservice.Registration.ID)
-		}
 		cli, err := mautrix.NewClient(req.Appservice.Homeserver, botUserID, req.Appservice.Registration.AppToken)
 		if err != nil {
 			return nil, MatrixWhoami{}, err
@@ -312,7 +310,35 @@ func (c *Core) setupCrypto(ctx context.Context, req MatrixCoreInitOptions) error
 		})
 	}
 	if err := helper.Init(ctx); err != nil {
-		return fmt.Errorf("failed to initialize Matrix E2EE; if this access token belongs to an existing encrypted device, the matching local crypto store is required. Logging in as a fresh device or adding durable crypto storage fixes this: %w", err)
+		if req.Appservice != nil && isMissingServerKeysError(err) {
+			if resetErr := c.resetCryptoStore(ctx); resetErr != nil {
+				return fmt.Errorf("failed to reset stale appservice Matrix E2EE store after missing server keys: %w", resetErr)
+			}
+			helper, err = cryptohelper.NewCryptoHelper(cli, c.pickleKey, c.cryptoStore)
+			if err == nil {
+				helper.DecryptErrorCallback = func(evt *event.Event, err error) {
+					c.rememberPendingDecryption(ctx, evt)
+					if c.retryPendingDecryptionEvent(ctx, evt) {
+						return
+					}
+					eventData := OutboundEvent{}
+					if evt != nil {
+						eventData["eventId"] = evt.ID.String()
+						eventData["roomId"] = evt.RoomID.String()
+						eventData["sender"] = evt.Sender.String()
+					}
+					c.emit(OutboundEvent{
+						"type":  "decryption_error",
+						"error": err.Error(),
+						"event": eventData,
+					})
+				}
+				err = helper.Init(ctx)
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("failed to initialize Matrix E2EE; if this access token belongs to an existing encrypted device, the matching local crypto store is required. Logging in as a fresh device or adding durable crypto storage fixes this: %w", err)
+		}
 	}
 	if err := helper.Machine().ShareKeys(ctx, -1); err != nil {
 		return fmt.Errorf("failed to upload Matrix E2EE device keys: %w", err)
@@ -348,6 +374,18 @@ func (c *Core) setupCrypto(ctx context.Context, req MatrixCoreInitOptions) error
 	syncer.OnEventType(event.EventReaction, c.processEvent)
 	syncer.OnEventType(event.EventRedaction, c.processEvent)
 	return nil
+}
+
+func isMissingServerKeysError(err error) bool {
+	return strings.Contains(err.Error(), "keys seem to have disappeared from the server")
+}
+
+func (c *Core) resetCryptoStore(ctx context.Context) error {
+	store, ok := c.cryptoStore.(*persistentCryptoStore)
+	if !ok {
+		return nil
+	}
+	return store.reset(ctx)
 }
 
 func (c *Core) loadRecoveryBackup(ctx context.Context, mach *crypto.OlmMachine, code string, verifyIdentity bool) (id.KeyBackupVersion, *backup.MegolmBackupKey, error) {

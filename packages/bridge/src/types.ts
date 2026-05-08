@@ -88,7 +88,7 @@ export interface HTTPProxyHandlingBridgeConnector<TConfig = unknown> extends Bri
     body?: unknown;
     method?: string;
     path?: string;
-  }): Promise<{ body?: unknown; headers?: Record<string, string>; status: number } | null> | { body?: unknown; headers?: Record<string, string>; status: number } | null;
+  }): Promise<{ body?: unknown; headers?: Record<string, string | string[]>; status: number } | null> | { body?: unknown; headers?: Record<string, string | string[]>; status: number } | null;
 }
 
 export interface CommandHandlingBridgeConnector<TConfig = unknown> extends BridgeConnector<TConfig> {
@@ -573,7 +573,7 @@ export interface CreateBeeperBridgeOptions extends Omit<CreateBridgeOptions, "ap
   store?: MatrixStore;
 }
 
-export interface BridgeMatrixConfig extends Pick<MatrixClientOptions, "account" | "appservice" | "beeper" | "fetch" | "homeserver" | "logger" | "pickleKey" | "randomBytes" | "recoveryKey" | "store" | "token" | "verifyRecoveryOnStart" | "wasmBytes" | "wasmModule" | "wasmUrl"> {
+export interface BridgeMatrixConfig extends Pick<MatrixClientOptions, "account" | "appservice" | "beeper" | "deviceId" | "fetch" | "homeserver" | "logger" | "pickleKey" | "randomBytes" | "recoveryKey" | "store" | "token" | "verifyRecoveryOnStart" | "wasmBytes" | "wasmModule" | "wasmUrl"> {
   store: MatrixStore;
 }
 

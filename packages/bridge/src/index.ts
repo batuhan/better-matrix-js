@@ -3,7 +3,7 @@ import { createFileMatrixStore } from "@beeper/pickle-state-file";
 import { resolve } from "node:path";
 import { createBeeperAppServiceInit } from "./beeper";
 import { RuntimeBridge } from "./bridge";
-import { createBridgeDataStore } from "./store";
+import { createBridgeDataStore, getOrCreateAppserviceDeviceId } from "./store";
 import type { CreateNodeBeeperBridgeOptions, CreateNodeBridgeOptions, PickleBridge } from "./types";
 
 export { createBridgeDataStore, MatrixBridgeDataStore } from "./store";
@@ -32,6 +32,7 @@ export async function createBeeperBridge(options: CreateNodeBeeperBridgeOptions)
   const matrix = {
     ...options.matrix,
     appservice: options.matrix?.appservice ?? appservice,
+    deviceId: options.matrix?.deviceId ?? await getOrCreateAppserviceDeviceId(store, options.bridge),
     homeserver: options.matrix?.homeserver ?? appservice.homeserver,
     store,
     token: options.matrix?.token ?? appservice.registration.asToken,
