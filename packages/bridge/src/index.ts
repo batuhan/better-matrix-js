@@ -47,6 +47,7 @@ export async function createBeeperBridge(options: CreateNodeBeeperBridgeOptions)
     },
     connector: options.connector,
     dataStore: options.dataStore ?? createBridgeDataStore(store),
+    ...(options.log ? { log: options.log } : {}),
     matrix,
   }, createMatrixClient({
     ...matrix,

@@ -15,10 +15,16 @@ export interface BeeperStreamPublisherClient {
   messages: Pick<MatrixMessages, "edit" | "get" | "send">;
 }
 
+export interface BeeperStreamSubscriber {
+  deviceId: string;
+  userId: string;
+}
+
 export interface CreateBeeperStreamPublisherOptions {
   client: BeeperStreamPublisherClient;
   initialMessageMetadata?: Record<string, unknown>;
   roomId: string;
+  subscribers?: BeeperStreamSubscriber[];
   targetEventId?: string;
   threadRoot?: string;
   turnId?: string;
@@ -49,6 +55,7 @@ export class BeeperStreamPublisher {
   #initialMessageMetadata: Record<string, unknown>;
   #queue = new SerialQueue();
   #seq = 1;
+  #subscribers: BeeperStreamSubscriber[];
   #targetEventId: string | undefined;
   #threadRoot: string | undefined;
 
@@ -57,6 +64,7 @@ export class BeeperStreamPublisher {
     this.#initialMessageMetadata = options.initialMessageMetadata ?? {};
     this.roomId = options.roomId;
     this.turnId = options.turnId ?? createTurnId();
+    this.#subscribers = options.subscribers ?? [];
     this.#targetEventId = options.targetEventId;
     this.#threadRoot = options.threadRoot;
     this.#accumulator = createFinalMessageAccumulator(this.turnId);
@@ -173,6 +181,7 @@ export class BeeperStreamPublisher {
       descriptor: stream.descriptor,
       eventId: target.eventId,
       roomId: this.roomId,
+      ...(this.#subscribers.length > 0 ? { subscribers: this.#subscribers } : {}),
     });
     await this.#publishPart(target.eventId, { messageId: this.turnId, messageMetadata: { turn_id: this.turnId, ...this.#initialMessageMetadata }, type: "start" });
     return { descriptor: stream.descriptor, eventId: target.eventId, turnId: this.turnId };
@@ -181,18 +190,19 @@ export class BeeperStreamPublisher {
   async #publishPart(targetEventId: string, part: BeeperUIMessageChunk): Promise<void> {
     const descriptorType = descriptorTypeOf(this.#descriptor);
     const seq = this.#seq;
+    const content = {
+      [`${descriptorType}.deltas`]: [
+        {
+          "m.relates_to": { event_id: targetEventId, rel_type: "m.reference" },
+          part,
+          seq,
+          target_event: targetEventId,
+          turn_id: this.turnId,
+        },
+      ],
+    };
     await this.#client.beeper.streams.publish({
-      content: {
-        [`${descriptorType}.deltas`]: [
-          {
-            "m.relates_to": { event_id: targetEventId, rel_type: "m.reference" },
-            part,
-            seq,
-            target_event: targetEventId,
-            turn_id: this.turnId,
-          },
-        ],
-      },
+      content,
       eventId: targetEventId,
       roomId: this.roomId,
     });

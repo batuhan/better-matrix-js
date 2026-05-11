@@ -31,6 +31,7 @@ describe("Beeper bridge manager helpers", () => {
         expect(JSON.parse(String(init?.body))).toEqual({
           address: "https://bridge.example",
           push: true,
+          receive_ephemeral: true,
           self_hosted: true,
         });
         return jsonResponse({

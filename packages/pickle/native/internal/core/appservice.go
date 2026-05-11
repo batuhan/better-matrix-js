@@ -221,6 +221,12 @@ func (c *Core) handleAppserviceApplyTransaction(ctx context.Context, payload []b
 	if err := json.Unmarshal(req.Transaction, &txn); err != nil {
 		return nil, err
 	}
+	if c.client != nil && len(txn.ToDeviceEvents) > 0 {
+		c.client.Log.Debug().
+			Int("events", len(txn.Events)).
+			Int("to_device_events", len(txn.ToDeviceEvents)).
+			Msg("Applying appservice transaction")
+	}
 	c.dispatchAppserviceEvents(ctx, txn.Events, event.MessageEventType)
 	c.dispatchAppserviceEvents(ctx, txn.ToDeviceEvents, event.ToDeviceEventType)
 	return c.empty()
@@ -232,6 +238,23 @@ func (c *Core) dispatchAppserviceEvents(ctx context.Context, events []*event.Eve
 			continue
 		}
 		evt.Type.Class = class
+		if err := evt.Content.ParseRaw(evt.Type); err != nil && c.client != nil && (evt.Type == event.ToDeviceBeeperStreamSubscribe || evt.Type == event.ToDeviceEncrypted || evt.Type == event.ToDeviceBeeperStreamUpdate) {
+			c.client.Log.Debug().Err(err).Str("event_type", evt.Type.Type).Msg("Failed to parse appservice stream event content")
+		}
+		if c.client != nil && class == event.ToDeviceEventType && (evt.Type == event.ToDeviceBeeperStreamSubscribe || evt.Type == event.ToDeviceEncrypted || evt.Type == event.ToDeviceBeeperStreamUpdate) {
+			subscribe := evt.Content.AsBeeperStreamSubscribe()
+			encrypted := evt.Content.AsEncrypted()
+			c.client.Log.Debug().
+				Str("event_type", evt.Type.Type).
+				Str("sender", evt.Sender.String()).
+				Str("to_user_id", evt.ToUserID.String()).
+				Str("to_device_id", evt.ToDeviceID.String()).
+				Str("room_id", subscribe.RoomID.String()).
+				Str("event_id", subscribe.EventID.String()).
+				Str("subscriber_device_id", subscribe.DeviceID.String()).
+				Str("encrypted_stream_id", encrypted.StreamID).
+				Msg("Dispatching appservice stream to-device event")
+		}
 		c.appserviceProcessor.Dispatch(ctx, evt)
 	}
 }

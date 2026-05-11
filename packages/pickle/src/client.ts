@@ -427,6 +427,14 @@ class DefaultMatrixClient implements MatrixClient {
   #emit(event: MatrixCoreEvent): void {
     const mapped = toClientEvent(event);
     if (!mapped) return;
+    if (mapped.kind === "stream") {
+      this.#options.logger?.("debug", "pickle_stream_event_emitted", {
+        contentKeys: Object.keys(mapped.content ?? {}),
+        eventId: mapped.eventId,
+        roomId: mapped.roomId,
+        type: mapped.type,
+      });
+    }
     if (mapped.kind === "error") {
       for (const subscription of this.#subscriptions) {
         subscription.fail(new Error(mapped.error));

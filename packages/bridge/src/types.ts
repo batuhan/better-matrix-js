@@ -552,6 +552,7 @@ export interface CreateBridgeOptions {
   beeper?: BridgeBeeperOptions;
   connector: BridgeConnector;
   dataStore?: BridgeDataStore;
+  log?: BridgeLogger;
   matrix: BridgeMatrixConfig;
 }
 

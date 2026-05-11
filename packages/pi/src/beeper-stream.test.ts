@@ -97,6 +97,28 @@ describe("Beeper stream publisher", () => {
     }
   });
 
+  it("registers a local subscriber device with the stream", async () => {
+    const { client, publish, register } = createClient();
+    const subscribers = [{ deviceId: "DESKTOP", userId: "@alice:example.com" }];
+    const publisher = new BeeperStreamPublisher({
+      client,
+      roomId: "!room:example.com",
+      subscribers,
+      turnId: "turn_direct",
+    });
+
+    await publisher.start();
+    await publisher.publish({ delta: "hello", id: "text_turn_direct", type: "text-delta" });
+
+    expect(register).toHaveBeenCalledWith({
+      descriptor: streamDescriptor,
+      eventId: "$target",
+      roomId: "!room:example.com",
+      subscribers,
+    });
+    expect(publish.mock.calls.map(([options]) => delta(options).seq)).toEqual([1, 2]);
+  });
+
   it("does not mutate final content or sequence when publish fails", async () => {
     const { client, edit, publish } = createClient();
     publish.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("network down"));

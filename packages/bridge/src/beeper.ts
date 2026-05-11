@@ -105,6 +105,7 @@ export class BeeperBridgeManagerClient {
     const registration = normalizeRegistration(await this.#hungryRequest("PUT", options.bridge, {
       address: options.address,
       push: options.push ?? Boolean(options.address),
+      receive_ephemeral: true,
       self_hosted: options.selfHosted ?? true,
     }));
     if (options.postState !== false) {
