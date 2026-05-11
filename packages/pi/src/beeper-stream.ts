@@ -30,6 +30,8 @@ export interface BeeperStreamFinalizeOptions {
   terminalPart?: BeeperUIMessageChunk;
 }
 
+const MAX_MATRIX_EVENT_CONTENT_BYTES = 60 * 1024;
+
 export class BeeperStreamPublisher {
   readonly roomId: string;
   readonly turnId: string;
@@ -126,26 +128,30 @@ export class BeeperStreamPublisher {
         messageMetadata: { finish_reason: finishReason, turn_id: this.turnId, ...options.messageMetadata },
         type: "finish",
       });
-    this.#finalized = true;
     const { eventId: targetEventId } = await this.start();
     const finalAIMessage = options.message ?? finalizeAccumulatedAIMessage(this.#accumulator);
     const finalText = options.body ?? options.finalText ?? getFinalMessageText(finalAIMessage);
+    const finalContent = compactFinalContent({
+      aiMessage: finalAIMessage,
+      body: finalText,
+    });
     const replacement = await this.#client.messages.edit({
       content: {
-        body: finalText || "...",
-        "com.beeper.ai": finalAIMessage,
+        body: finalContent.body || "...",
+        "com.beeper.ai": finalContent.aiMessage,
         "com.beeper.stream": null,
         msgtype: "m.text",
       },
       eventId: targetEventId,
       messageType: "m.text",
       roomId: this.roomId,
-      text: finalText || "...",
+      text: finalContent.body || "...",
       topLevelContent: {
         "com.beeper.dont_render_edited": true,
         "com.beeper.stream": null,
       },
     });
+    this.#finalized = true;
     return {
       ...replacement,
       eventId: targetEventId,
@@ -180,6 +186,90 @@ function createFinalMessageAccumulator(turnId: string): FinalMessageAccumulator 
     toolInputTextByCallId: new Map(),
     toolNameByCallId: new Map(),
   };
+}
+
+function compactFinalContent(options: { aiMessage: Record<string, unknown>; body: string }): { aiMessage: Record<string, unknown>; body: string } {
+  if (eventContentBytes(options.aiMessage, options.body) <= MAX_MATRIX_EVENT_CONTENT_BYTES) return options;
+
+  const compact = compactAIMessage(options.aiMessage, { keepToolInput: true, maxTextChars: options.body.length });
+  if (eventContentBytes(compact, options.body) <= MAX_MATRIX_EVENT_CONTENT_BYTES) return { aiMessage: compact, body: options.body };
+
+  const toolCallsOnly = compactAIMessage(options.aiMessage, { keepToolInput: false, maxTextChars: options.body.length });
+  if (eventContentBytes(toolCallsOnly, options.body) <= MAX_MATRIX_EVENT_CONTENT_BYTES) return { aiMessage: toolCallsOnly, body: options.body };
+
+  const maxTextChars = Math.max(0, Math.floor((MAX_MATRIX_EVENT_CONTENT_BYTES - eventContentBytes(toolCallsOnly, "")) / 2) - 1024);
+  const body = truncateWithNotice(options.body, maxTextChars);
+  return {
+    aiMessage: compactAIMessage(options.aiMessage, { keepToolInput: false, maxTextChars }),
+    body,
+  };
+}
+
+function eventContentBytes(aiMessage: Record<string, unknown>, body: string): number {
+  return Buffer.byteLength(JSON.stringify({
+    body: body || "...",
+    "com.beeper.ai": aiMessage,
+    "com.beeper.stream": null,
+    msgtype: "m.text",
+  }));
+}
+
+function compactAIMessage(
+  message: Record<string, unknown>,
+  options: { keepToolInput: boolean; maxTextChars: number },
+): Record<string, unknown> {
+  return {
+    id: message.id,
+    metadata: compactMetadata(isRecord(message.metadata) ? message.metadata : {}),
+    parts: compactParts(Array.isArray(message.parts) ? message.parts : [], options),
+    role: message.role,
+  };
+}
+
+function compactMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  return copyDefined({
+    turn_id: metadata.turn_id,
+    finish_reason: metadata.finish_reason,
+    response_status: metadata.response_status,
+    usage: metadata.usage,
+    context_limit: metadata.context_limit,
+    contextLimit: metadata.contextLimit,
+  });
+}
+
+function compactParts(parts: unknown[], options: { keepToolInput: boolean; maxTextChars: number }): Record<string, unknown>[] {
+  return parts
+    .filter(isRecord)
+    .flatMap((part) => {
+      if (part.type === "text") {
+        return [copyDefined({
+          state: part.state,
+          text: typeof part.text === "string" ? truncateWithNotice(part.text, options.maxTextChars) : part.text,
+          type: part.type,
+        })];
+      }
+      if (part.type === "dynamic-tool" || (typeof part.type === "string" && part.type.startsWith("tool-"))) {
+        return [copyDefined({
+          input: options.keepToolInput ? part.input : undefined,
+          state: part.state,
+          toolCallId: part.toolCallId,
+          toolName: part.toolName,
+          type: part.type,
+        })];
+      }
+      return [];
+    });
+}
+
+function truncateWithNotice(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  if (maxChars <= 0) return "";
+  const notice = "\n\n[Matrix event compacted: text truncated to fit the 64 KiB event content limit.]";
+  return `${value.slice(0, Math.max(0, maxChars - notice.length))}${notice}`;
+}
+
+function copyDefined(input: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
 }
 
 function applyFinalMessagePart(state: FinalMessageAccumulator, part: Record<string, unknown>): void {

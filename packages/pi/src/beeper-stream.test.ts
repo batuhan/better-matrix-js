@@ -156,6 +156,44 @@ describe("Beeper stream publisher", () => {
     });
     expect(aborted.edit).not.toHaveBeenCalled();
   });
+
+  it("compacts oversized final Matrix content without dropping text or tool calls", async () => {
+    const { client, edit } = createClient();
+    const publisher = createBeeperStreamPublisher({ client, roomId: "!room:example.com", turnId: "turn_big" });
+    const largeOutput = "x".repeat(70 * 1024);
+
+    await publisher.start();
+    await publisher.finalize({
+      body: "final answer",
+      message: {
+        id: "turn_big",
+        metadata: {
+          model: "gpt-test",
+          response_id: "resp_1",
+          turn_id: "turn_big",
+          usage: { context_limit: 100, prompt_tokens: 10, completion_tokens: 2 },
+        },
+        parts: [
+          { state: "done", text: "final answer", type: "text" },
+          { input: { cmd: "date" }, output: largeOutput, state: "output-available", toolCallId: "call_1", toolName: "exec", type: "dynamic-tool" },
+        ],
+        role: "assistant",
+      },
+    });
+
+    const content = edit.mock.calls[0]![0].content;
+    const ai = content["com.beeper.ai"] as Record<string, any>;
+    expect(Buffer.byteLength(JSON.stringify(content))).toBeLessThanOrEqual(60 * 1024);
+    expect(content.body).toBe("final answer");
+    expect(ai.metadata).toEqual({
+      turn_id: "turn_big",
+      usage: { context_limit: 100, prompt_tokens: 10, completion_tokens: 2 },
+    });
+    expect(ai.parts).toEqual([
+      { state: "done", text: "final answer", type: "text" },
+      { input: { cmd: "date" }, state: "output-available", toolCallId: "call_1", toolName: "exec", type: "dynamic-tool" },
+    ]);
+  });
 });
 
 const streamDescriptor = {
