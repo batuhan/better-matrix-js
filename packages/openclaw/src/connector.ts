@@ -232,6 +232,14 @@ export class OpenClawNetworkAPI implements NetworkAPI, IdentifierResolvingNetwor
         mxid: contact.ghostUserId,
       });
     }
+    for (const contact of this.#registry.data.users) {
+      ctx.bridge.registerGhost({
+        displayName: contact.displayName,
+        id: contact.userId,
+        metadata: { openclaw: contact },
+        mxid: contact.ghostUserId,
+      });
+    }
   }
 
   async disconnect(): Promise<void> {
@@ -280,13 +288,22 @@ export class OpenClawNetworkAPI implements NetworkAPI, IdentifierResolvingNetwor
     const importOptions: { limit?: number; roomId: string } = { roomId: binding.roomId };
     const limit = params.limit ?? params.count;
     if (limit !== undefined) importOptions.limit = limit;
-    const backfill = await buildBackfillImport(this.#runtime, this.#runtime.config, {
+    const sessionOptions: Parameters<typeof buildBackfillImport>[2] = {
       agentId: binding.agentId,
       label: binding.label ?? binding.sessionKey,
       session: { key: binding.sessionKey },
       sessionKey: binding.sessionKey,
       source: binding.owner === "imported" ? "unknown" : "channel",
-    }, importOptions);
+    };
+    if (binding.humanGhostUserId) {
+      sessionOptions.human = {
+        displayName: binding.humanGhostUserId,
+        ghostUserId: binding.humanGhostUserId,
+        userId: binding.humanGhostUserId,
+      };
+    }
+    const backfill = await buildBackfillImport(this.#runtime, this.#runtime.config, sessionOptions, importOptions);
+    if (backfill.human) this.#registry.upsertUser(backfill.human);
     return {
       hasMore: false,
       messages: backfill.messages.map((message) => ({
@@ -298,8 +315,8 @@ export class OpenClawNetworkAPI implements NetworkAPI, IdentifierResolvingNetwor
           id: message.id,
           portalKey: params.portal.portalKey,
           sender: {
-            isFromMe: message.sender !== "agent",
-            sender: message.sender === "agent" ? binding.agentId : `${this.#login.id}:human`,
+            isFromMe: false,
+            sender: message.sender === "agent" ? binding.agentId : binding.humanGhostUserId ?? `${this.#login.id}:human`,
           },
           timestamp: new Date(0),
         }),

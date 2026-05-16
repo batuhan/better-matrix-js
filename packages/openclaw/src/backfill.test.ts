@@ -33,6 +33,11 @@ describe("OpenClaw backfill", () => {
       },
       {
         agentId: "main",
+        human: {
+          displayName: "user-1",
+          ghostUserId: "@openclaw_user_user-1:localhost",
+          userId: "user-1",
+        },
         label: "agent:main:whatsapp:user-1",
         session: { chatType: "dm", key: "agent:main:whatsapp:user-1", lastTo: "user-1" },
         sessionKey: "agent:main:whatsapp:user-1",
@@ -55,6 +60,11 @@ describe("OpenClaw backfill", () => {
     try {
       await expect(buildBackfillImport(runtime, createDefaultConfig({ dataDir: "/tmp/openclaw" }), {
         agentId: "main",
+        human: {
+          displayName: "Alice",
+          ghostUserId: "@openclaw_user_alice:localhost",
+          userId: "alice",
+        },
         label: "Terminal",
         session: { key: "agent:main:terminal:local" },
         sessionKey: "agent:main:terminal:local",
@@ -66,10 +76,16 @@ describe("OpenClaw backfill", () => {
         binding: {
           agentId: "main",
           ghostUserId: "@openclaw_agent_main:localhost",
+          humanGhostUserId: "@openclaw_user_alice:localhost",
           label: "Terminal",
           owner: "imported",
           roomId: "!room:example.com",
           sessionKey: "agent:main:terminal:local",
+        },
+        human: {
+          displayName: "Alice",
+          ghostUserId: "@openclaw_user_alice:localhost",
+          userId: "alice",
         },
         messages: [
           {

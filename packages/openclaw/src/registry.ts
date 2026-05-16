@@ -1,14 +1,14 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { defaultDataDir } from "./config";
-import type { OpenClawAgentContact, OpenClawBridgeRegistryData, OpenClawSessionBinding } from "./types";
+import type { OpenClawAgentContact, OpenClawBridgeRegistryData, OpenClawSessionBinding, OpenClawUserContact } from "./types";
 
 export function defaultRegistryPath(dataDir = defaultDataDir()): string {
   return resolve(dataDir, "registry.json");
 }
 
 export function emptyRegistry(): OpenClawBridgeRegistryData {
-  return { agents: [], bindings: [], dedupe: {}, schemaVersion: 1 };
+  return { agents: [], bindings: [], dedupe: {}, schemaVersion: 1, users: [] };
 }
 
 export class OpenClawBridgeRegistry {
@@ -51,6 +51,16 @@ export class OpenClawBridgeRegistry {
 
   replaceAgents(agents: OpenClawAgentContact[]): void {
     this.#data.agents = [...agents];
+  }
+
+  getUser(userId: string): OpenClawUserContact | undefined {
+    return this.#data.users.find((user) => user.userId === userId);
+  }
+
+  upsertUser(user: OpenClawUserContact): void {
+    const index = this.#data.users.findIndex((item) => item.userId === user.userId);
+    if (index === -1) this.#data.users.push(user);
+    else this.#data.users[index] = user;
   }
 
   getBindingById(id: string): OpenClawSessionBinding | undefined {
@@ -104,5 +114,6 @@ function normalizeRegistry(value: unknown): OpenClawBridgeRegistryData {
     bindings: Array.isArray(data.bindings) ? data.bindings : [],
     dedupe: data.dedupe && typeof data.dedupe === "object" ? data.dedupe : {},
     schemaVersion: 1,
+    users: Array.isArray(data.users) ? data.users : [],
   };
 }

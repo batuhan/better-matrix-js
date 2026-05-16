@@ -3,11 +3,12 @@ import type {
   OpenClawGatewayRuntime,
   OpenClawListedSession,
 } from "./openclaw-runtime";
-import { agentGhostUserId, bindingIdForRoom } from "./rooms";
-import type { OpenClawBridgeConfig, OpenClawSessionBinding } from "./types";
+import { agentGhostUserId, bindingIdForRoom, userContactFromOpenClawSession } from "./rooms";
+import type { OpenClawBridgeConfig, OpenClawSessionBinding, OpenClawUserContact } from "./types";
 
 export interface OpenClawBackfillSession {
   agentId: string;
+  human?: OpenClawUserContact;
   label: string;
   session: OpenClawListedSession;
   sessionKey: string;
@@ -24,6 +25,7 @@ export interface OpenClawBackfillMessage {
 
 export interface OpenClawBackfillImport {
   binding: OpenClawSessionBinding;
+  human?: OpenClawUserContact;
   messages: OpenClawBackfillMessage[];
   source: OpenClawBackfillSession["source"];
 }
@@ -33,13 +35,16 @@ export async function discoverOneToOneSessions(runtime: OpenClawGatewayRuntime):
   return sessions.flatMap((session) => {
     if (!isOneToOneSession(session)) return [];
     const agentId = resolveAgentId(session);
-    return [{
+    const result: OpenClawBackfillSession = {
       agentId,
       label: session.displayName ?? session.derivedTitle ?? session.label ?? session.key,
       session,
       sessionKey: session.key,
       source: sessionSource(session),
-    }];
+    };
+    const human = userContactFromOpenClawSession(runtime.config, session);
+    if (human !== undefined) result.human = human;
+    return [result];
   });
 }
 
@@ -52,8 +57,7 @@ export async function buildBackfillImport(
   const messages = (await runtime.loadHistory(session.sessionKey, options.limit)).map((message, index) =>
     normalizeHistoryMessage(message, index)
   );
-  return {
-    binding: {
+  const binding: OpenClawSessionBinding = {
       agentId: session.agentId,
       createdAt: Date.now(),
       ghostUserId: agentGhostUserId(config, session.agentId),
@@ -64,7 +68,11 @@ export async function buildBackfillImport(
       roomId: options.roomId,
       sessionKey: session.sessionKey,
       updatedAt: Date.now(),
-    },
+  };
+  if (session.human !== undefined) binding.humanGhostUserId = session.human.ghostUserId;
+  return {
+    binding,
+    ...(session.human !== undefined ? { human: session.human } : {}),
     messages,
     source: session.source,
   };

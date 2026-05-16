@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { OpenClawBridgeRegistry } from "./registry";
 
 describe("OpenClawBridgeRegistry", () => {
-  it("persists agent contacts, session bindings, and dedupe keys", async () => {
+  it("persists agent contacts, user contacts, session bindings, and dedupe keys", async () => {
     const dir = await mkdtemp(resolve(tmpdir(), "pickle-openclaw-"));
     const path = resolve(dir, "registry.json");
     const registry = new OpenClawBridgeRegistry(path);
@@ -14,6 +14,12 @@ describe("OpenClawBridgeRegistry", () => {
       agentId: "codex",
       displayName: "Codex",
       ghostUserId: "@openclaw_agent_codex:example.com",
+    });
+    registry.upsertUser({
+      displayName: "Alice",
+      ghostUserId: "@openclaw_user_alice:example.com",
+      source: "whatsapp",
+      userId: "alice",
     });
     registry.upsertBinding({
       agentId: "codex",
@@ -32,6 +38,7 @@ describe("OpenClawBridgeRegistry", () => {
     const loaded = new OpenClawBridgeRegistry(path);
     await loaded.load();
     expect(loaded.getAgent("codex")?.displayName).toBe("Codex");
+    expect(loaded.getUser("alice")?.ghostUserId).toBe("@openclaw_user_alice:example.com");
     expect(loaded.getBindingByRoom("!room:example.com")?.sessionKey).toBe("agent:codex:main");
     expect(loaded.getBindingBySessionKey("agent:codex:main")?.id).toBe("binding");
     expect(loaded.getBindingsByAgent("codex")).toHaveLength(1);

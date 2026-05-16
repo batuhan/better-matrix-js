@@ -9,6 +9,13 @@ export interface OpenClawAgentContact {
   description?: string;
 }
 
+export interface OpenClawUserContact {
+  displayName: string;
+  ghostUserId: string;
+  source?: string;
+  userId: string;
+}
+
 export interface OpenClawSessionBinding {
   id: string;
   kind: OpenClawBindingKind;
@@ -18,6 +25,7 @@ export interface OpenClawSessionBinding {
   sessionKey: string;
   agentId: string;
   ghostUserId: string;
+  humanGhostUserId?: string;
   cwd?: string;
   label?: string;
   createdAt: number;
@@ -52,6 +60,7 @@ export interface OpenClawBridgeRegistryData {
   bindings: OpenClawSessionBinding[];
   dedupe: Record<string, number>;
   schemaVersion: 1;
+  users: OpenClawUserContact[];
 }
 
 export interface AppserviceRegistration {
