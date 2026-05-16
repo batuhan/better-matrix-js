@@ -56,6 +56,23 @@ export interface OpenClawSessionSendOptions {
   timeoutMs?: number;
 }
 
+export interface OpenClawGatewayFeatureSnapshot {
+  agents?: unknown;
+  artifacts?: unknown;
+  channels?: unknown;
+  commands?: unknown;
+  config?: unknown;
+  cron?: unknown;
+  health?: unknown;
+  models?: unknown;
+  sessions?: unknown;
+  skills?: unknown;
+  status?: unknown;
+  tasks?: unknown;
+  tools?: unknown;
+  usage?: unknown;
+}
+
 export interface OpenClawSessionRef {
   agentId?: string;
   key: string;
@@ -109,6 +126,85 @@ export class OpenClawGatewayRuntime {
     const result = await this.transport.request("agents.list", {});
     const agents = arrayValue(recordValue(result)?.agents) ?? arrayValue(result);
     return (agents ?? []).map((agent) => agentContactFromOpenClawAgent(this.config, recordValue(agent) ?? {}));
+  }
+
+  call<T = unknown>(method: string, params?: unknown, options?: GatewayRequestOptions): Promise<T> {
+    return this.transport.request<T>(method, params, options);
+  }
+
+  async featureSnapshot(): Promise<OpenClawGatewayFeatureSnapshot> {
+    const entries = await Promise.allSettled([
+      this.call("health", {}),
+      this.call("status", {}),
+      this.call("models.list", { view: "configured" }),
+      this.call("channels.status", {}),
+      this.call("sessions.list", { includeArchived: true }),
+      this.call("commands.list", {}),
+      this.call("tools.catalog", {}),
+      this.call("skills.status", {}),
+      this.call("tasks.list", { limit: 100 }),
+      this.call("usage.status", {}),
+      this.call("artifacts.list", {}),
+      this.call("cron.list", {}),
+      this.call("agents.list", {}),
+      this.call("config.get", {}),
+    ]);
+    return stripUndefined({
+      health: settledValue(entries[0]),
+      status: settledValue(entries[1]),
+      models: settledValue(entries[2]),
+      channels: settledValue(entries[3]),
+      sessions: settledValue(entries[4]),
+      commands: settledValue(entries[5]),
+      tools: settledValue(entries[6]),
+      skills: settledValue(entries[7]),
+      tasks: settledValue(entries[8]),
+      usage: settledValue(entries[9]),
+      artifacts: settledValue(entries[10]),
+      cron: settledValue(entries[11]),
+      agents: settledValue(entries[12]),
+      config: settledValue(entries[13]),
+    });
+  }
+
+  listModels(params: Record<string, unknown> = { view: "configured" }): Promise<unknown> {
+    return this.call("models.list", params);
+  }
+
+  listTools(params: Record<string, unknown> = {}): Promise<unknown> {
+    return this.call("tools.catalog", params);
+  }
+
+  effectiveTools(sessionKey: string): Promise<unknown> {
+    return this.call("tools.effective", { sessionKey });
+  }
+
+  invokeTool(params: Record<string, unknown>, options?: GatewayRequestOptions): Promise<unknown> {
+    return this.call("tools.invoke", params, options);
+  }
+
+  listTasks(params: Record<string, unknown> = { limit: 100 }): Promise<unknown> {
+    return this.call("tasks.list", params);
+  }
+
+  getTask(taskId: string): Promise<unknown> {
+    return this.call("tasks.get", { taskId });
+  }
+
+  cancelTask(taskId: string, reason?: string): Promise<unknown> {
+    return this.call("tasks.cancel", stripUndefined({ reason, taskId }));
+  }
+
+  listArtifacts(params: Record<string, unknown>): Promise<unknown> {
+    return this.call("artifacts.list", params);
+  }
+
+  getArtifact(params: Record<string, unknown>): Promise<unknown> {
+    return this.call("artifacts.get", params);
+  }
+
+  downloadArtifact(params: Record<string, unknown>): Promise<unknown> {
+    return this.call("artifacts.download", params);
   }
 
   async createSession(options: OpenClawSessionCreateOptions): Promise<OpenClawSessionRef> {
@@ -193,6 +289,30 @@ export class OpenClawGatewayRuntime {
     const runId = stringValue(record.runId);
     if (!runId) throw new Error("OpenClaw sessions.send did not return a runId");
     return { raw, runId, sessionKey: stringValue(record.sessionKey) ?? options.sessionKey };
+  }
+
+  async steerSession(options: OpenClawSessionSendOptions): Promise<OpenClawRunRef> {
+    const requestOptions: GatewayRequestOptions = { expectFinal: true };
+    if (options.timeoutMs !== undefined) requestOptions.timeoutMs = options.timeoutMs;
+    const raw = await this.transport.request("sessions.steer", {
+      key: options.sessionKey,
+      message: options.message,
+      ...(options.attachments ? { attachments: options.attachments } : {}),
+      ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+      ...(options.thinking ? { thinking: options.thinking } : {}),
+      ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
+    }, requestOptions);
+    const record = recordValue(raw) ?? {};
+    const runId = stringValue(record.runId);
+    if (!runId) throw new Error("OpenClaw sessions.steer did not return a runId");
+    return { raw, runId, sessionKey: stringValue(record.sessionKey) ?? options.sessionKey };
+  }
+
+  abortSession(params: { runId?: string; sessionKey?: string }): Promise<unknown> {
+    return this.call("sessions.abort", stripUndefined({
+      key: params.sessionKey,
+      runId: params.runId,
+    }));
   }
 
   eventsForRun(runId: string): AsyncIterable<OpenClawGatewayEvent> {
@@ -461,6 +581,10 @@ function recordValue(value: unknown): Record<string, unknown> | undefined {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function settledValue(result: PromiseSettledResult<unknown>): unknown {
+  return result.status === "fulfilled" ? result.value : undefined;
 }
 
 async function readGatewayResponse(response: Response): Promise<unknown> {

@@ -58,6 +58,40 @@ describe("OpenClawGatewayRuntime", () => {
     }, { expectFinal: true, timeoutMs: 1000 });
   });
 
+  it("exposes generic OpenClaw gateway feature RPC wrappers", async () => {
+    const transport = fakeTransport({
+      "artifacts.list": { artifacts: [{ id: "artifact_1" }] },
+      "models.list": { models: ["gpt-5.4"] },
+      "sessions.abort": { aborted: true },
+      "sessions.steer": { runId: "run_steer", sessionKey: "agent:codex:main" },
+      "tasks.cancel": { cancelled: true },
+      "tasks.list": { tasks: [] },
+      "tools.catalog": { tools: [{ name: "exec" }] },
+      "tools.effective": { tools: [{ name: "read" }] },
+      "tools.invoke": { ok: true },
+    });
+    const runtime = new OpenClawGatewayRuntime({
+      config: createDefaultConfig({ dataDir: "/tmp/openclaw" }),
+      transport,
+    });
+
+    await expect(runtime.listModels()).resolves.toEqual({ models: ["gpt-5.4"] });
+    await expect(runtime.listTools()).resolves.toEqual({ tools: [{ name: "exec" }] });
+    await expect(runtime.effectiveTools("agent:codex:main")).resolves.toEqual({ tools: [{ name: "read" }] });
+    await expect(runtime.invokeTool({ name: "read", sessionKey: "agent:codex:main" })).resolves.toEqual({ ok: true });
+    await expect(runtime.listTasks()).resolves.toEqual({ tasks: [] });
+    await expect(runtime.cancelTask("task_1", "stale")).resolves.toEqual({ cancelled: true });
+    await expect(runtime.listArtifacts({ sessionKey: "agent:codex:main" })).resolves.toEqual({ artifacts: [{ id: "artifact_1" }] });
+    await expect(runtime.steerSession({ message: "actually do this", sessionKey: "agent:codex:main" })).resolves.toEqual({
+      raw: { runId: "run_steer", sessionKey: "agent:codex:main" },
+      runId: "run_steer",
+      sessionKey: "agent:codex:main",
+    });
+    await expect(runtime.abortSession({ runId: "run_steer" })).resolves.toEqual({ aborted: true });
+    expect(transport.request).toHaveBeenCalledWith("tasks.cancel", { reason: "stale", taskId: "task_1" }, undefined);
+    expect(transport.request).toHaveBeenCalledWith("sessions.abort", { runId: "run_steer" }, undefined);
+  });
+
   it("filters gateway events by run id and resolves approvals", async () => {
     const events: OpenClawGatewayEvent[] = [
       { event: "assistant.delta", payload: { delta: "skip", runId: "run_other" } },
