@@ -2,6 +2,7 @@ export * from "./approval";
 export * from "./bridge-agent";
 export * from "./cli";
 export * from "./config";
+export * from "./connector";
 export * from "./openclaw-event-map";
 export * from "./openclaw-runtime";
 export * from "./registry";

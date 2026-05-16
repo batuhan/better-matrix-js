@@ -39,6 +39,10 @@
       "types": "./dist/config.d.mts",
       "import": "./dist/config.mjs"
     },
+    "./connector": {
+      "types": "./dist/connector.d.mts",
+      "import": "./dist/connector.mjs"
+    },
     "./openclaw-event-map": {
       "types": "./dist/openclaw-event-map.d.mts",
       "import": "./dist/openclaw-event-map.mjs"
