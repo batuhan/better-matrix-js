@@ -246,6 +246,7 @@ describe("RuntimeBridge", () => {
 
     await bridge.start();
     const portal = await bridge.createPortalRoom({
+      creationContent: { "m.federate": false },
       info: { name: "Remote room" },
       portalKey: { id: "remote-room", receiver: "login:a" },
       userId: "@test_alice:example",
@@ -262,6 +263,7 @@ describe("RuntimeBridge", () => {
     expect(client.appservice.init).toHaveBeenCalledOnce();
     expect(client.appservice.createPortalRoom).toHaveBeenCalledWith(expect.objectContaining({
       bridge: expect.objectContaining({ networkId: "test" }),
+      creationContent: { "m.federate": false },
       name: "Remote room",
       userId: "@test_alice:example",
     }));

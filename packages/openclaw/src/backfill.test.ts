@@ -162,6 +162,7 @@ describe("OpenClaw backfill", () => {
     });
 
     expect(bridge.createPortal).toHaveBeenCalledWith(login, expect.objectContaining({
+      creationContent: { "m.federate": false },
       metadata: {
         openclaw: {
           agentId: "codex",

@@ -74,6 +74,7 @@ export interface MatrixAppserviceCreatePortalRoomOptions {
   autoJoinInvites?: boolean;
   bridge: MatrixAppserviceBridgeName;
   bridgeName?: string;
+  creationContent?: { [key: string]: unknown };
   initialState?: MatrixRoomStateInput[];
   initialMembers?: string[];
   invite?: string[];
@@ -218,11 +219,6 @@ export interface MatrixStartBeeperStreamMessageResult {
   descriptor: { [key: string]: unknown };
   eventId: string;
   roomId: string;
-  subscribers?: MatrixBeeperStreamSubscriber[];
-}
-export interface MatrixBeeperStreamSubscriber {
-  deviceId: string;
-  userId: string;
 }
 export interface MatrixPublishBeeperStreamMessagePartOptions {
   agentId?: string;

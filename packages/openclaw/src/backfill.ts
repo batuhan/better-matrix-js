@@ -1,4 +1,4 @@
-import type { PickleBridge, Portal, UserLogin } from "@beeper/pickle-bridge";
+import type { BridgeCreatePortalOptions, PickleBridge, Portal, UserLogin } from "@beeper/pickle-bridge";
 import type {
   OpenClawChatHistoryMessage,
   OpenClawGatewayRuntime,
@@ -102,7 +102,7 @@ export async function backfillAllOpenClawSessions(options: BackfillAllOpenClawSe
     });
     options.registry.upsertAgent(agent);
     if (session.human) options.registry.upsertUser(session.human);
-    const portal = await options.bridge.createPortal(options.login, {
+    const portalOptions: BridgeCreatePortalOptions = {
       id: portalIdForBackfillSession(session),
       metadata: {
         openclaw: stripUndefined({
@@ -116,7 +116,9 @@ export async function backfillAllOpenClawSessions(options: BackfillAllOpenClawSe
       name: session.label,
       roomType: "dm",
       sender: session.agentId,
-    });
+    };
+    if (options.runtime.config.nonFederatedRooms) portalOptions.creationContent = { "m.federate": false };
+    const portal = await options.bridge.createPortal(options.login, portalOptions);
     portals.push(portal);
     if (portal.mxid) {
       const importOptions: { limit?: number; roomId: string } = { roomId: portal.mxid };

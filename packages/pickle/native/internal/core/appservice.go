@@ -91,6 +91,7 @@ type MatrixAppserviceCreatePortalRoomOptions struct {
 	AutoJoinInvites bool                       `json:"autoJoinInvites,omitempty"`
 	Bridge          MatrixAppserviceBridgeName `json:"bridge"`
 	BridgeName      string                     `json:"bridgeName,omitempty"`
+	CreationContent map[string]any             `json:"creationContent,omitempty" tstype:"{ [key: string]: unknown }"`
 	InitialState    []MatrixRoomStateInput     `json:"initialState,omitempty"`
 	InitialMembers  []string                   `json:"initialMembers,omitempty"`
 	Invite          []string                   `json:"invite,omitempty"`
@@ -356,7 +357,7 @@ func (as *matrixAppservice) makePortalCreateRoomRequest(req MatrixAppserviceCrea
 		BeeperBridgeAccountID: req.PortalKey.Receiver,
 		BeeperBridgeName:      bridgeName,
 		BeeperLocalRoomID:     localRoomID,
-		CreationContent:       map[string]any{},
+		CreationContent:       cloneMap(req.CreationContent),
 		InitialState:          make([]*event.Event, 0, 5),
 		Invite:                toUserIDs(req.Invite),
 		IsDirect:              req.IsDirect,
@@ -702,6 +703,14 @@ func toUserIDs(input []string) []id.UserID {
 		if userID != "" {
 			output = append(output, id.UserID(userID))
 		}
+	}
+	return output
+}
+
+func cloneMap(input map[string]any) map[string]any {
+	output := make(map[string]any, len(input))
+	for key, value := range input {
+		output[key] = value
 	}
 	return output
 }

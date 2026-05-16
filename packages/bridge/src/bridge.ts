@@ -289,6 +289,7 @@ export class RuntimeBridge implements PickleBridge {
       avatarUrl: info.avatar?.mxc ?? options.avatarUrl,
       bridge: this.connector.getName(),
       bridgeName: this.#beeperOptions?.bridge,
+      creationContent: options.creationContent,
       initialState: options.initialState,
       initialMembers: this.#beeperOptions ? invite : undefined,
       invite,

@@ -28,7 +28,10 @@ func TestMakePortalCreateRoomRequestBuildsBridgeV2Room(t *testing.T) {
 			DisplayName:      "Test",
 			NetworkID:        "test",
 		},
-		BridgeName:     "test",
+		BridgeName: "test",
+		CreationContent: map[string]any{
+			"m.federate": false,
+		},
 		InitialMembers: []string{"@alice:example"},
 		Invite:         []string{"@alice:example"},
 		Name:           "Remote room",
@@ -49,6 +52,9 @@ func TestMakePortalCreateRoomRequestBuildsBridgeV2Room(t *testing.T) {
 	}
 	if createReq.PowerLevelOverride.Events[event.StateBridge.Type] != 100 {
 		t.Fatalf("expected m.bridge power level override, got %#v", createReq.PowerLevelOverride.Events)
+	}
+	if createReq.CreationContent["m.federate"] != false {
+		t.Fatalf("expected portal creation content to preserve m.federate=false, got %#v", createReq.CreationContent)
 	}
 	assertHasBridgeState(t, createReq, event.StateBridge.Type)
 	assertHasBridgeState(t, createReq, event.StateHalfShotBridge.Type)
