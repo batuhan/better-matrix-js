@@ -28,9 +28,17 @@
       "types": "./dist/openclaw-event-map.d.mts",
       "import": "./dist/openclaw-event-map.mjs"
     },
+    "./registry": {
+      "types": "./dist/registry.d.mts",
+      "import": "./dist/registry.mjs"
+    },
     "./registration": {
       "types": "./dist/registration.d.mts",
       "import": "./dist/registration.mjs"
+    },
+    "./rooms": {
+      "types": "./dist/rooms.d.mts",
+      "import": "./dist/rooms.mjs"
     },
     "./stream-map": {
       "types": "./dist/stream-map.d.mts",
