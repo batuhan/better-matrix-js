@@ -1,9 +1,13 @@
-import type {
+import {
+  createRemoteMessage,
+  type BackfillingNetworkAPI,
   BridgeConnector,
   BridgeContext,
   BridgeRequestContext,
   BridgeUser,
   ConnectContext,
+  FetchMessagesParams,
+  FetchMessagesResponse,
   IdentifierResolvingNetworkAPI,
   LoginCreateContext,
   LoginFlow,
@@ -23,6 +27,7 @@ import type {
   ResolveIdentifierResponse,
   UserLogin,
 } from "@beeper/pickle-bridge";
+import { buildBackfillImport } from "./backfill";
 import { parseApprovalResponseContent } from "./approval";
 import { OpenClawMatrixBridgeAgent, type OpenClawBridgeStreamPublisher } from "./bridge-agent";
 import { createDefaultConfig } from "./config";
@@ -194,7 +199,7 @@ export class OpenClawGatewayLoginProcess implements LoginProcess {
   }
 }
 
-export class OpenClawNetworkAPI implements NetworkAPI, IdentifierResolvingNetworkAPI, MessageHandlingNetworkAPI, ReactionHandlingNetworkAPI {
+export class OpenClawNetworkAPI implements NetworkAPI, IdentifierResolvingNetworkAPI, MessageHandlingNetworkAPI, ReactionHandlingNetworkAPI, BackfillingNetworkAPI {
   readonly #agent: OpenClawMatrixBridgeAgent;
   readonly #login: UserLogin;
   readonly #registry: OpenClawBridgeRegistry;
@@ -267,6 +272,39 @@ export class OpenClawNetworkAPI implements NetworkAPI, IdentifierResolvingNetwor
     if (!approval) return null;
     await this.#agent.handleApprovalContent(msg.content, approval.approvalId ?? msg.targetMessage.id);
     return { id: msg.event.eventId, metadata: { openclaw: { approval } } };
+  }
+
+  async fetchMessages(_ctx: BridgeRequestContext, params: FetchMessagesParams): Promise<FetchMessagesResponse> {
+    const binding = bindingFromPortal(params.portal);
+    if (!binding) return { hasMore: false, messages: [] };
+    const importOptions: { limit?: number; roomId: string } = { roomId: binding.roomId };
+    const limit = params.limit ?? params.count;
+    if (limit !== undefined) importOptions.limit = limit;
+    const backfill = await buildBackfillImport(this.#runtime, this.#runtime.config, {
+      agentId: binding.agentId,
+      label: binding.label ?? binding.sessionKey,
+      session: { key: binding.sessionKey },
+      sessionKey: binding.sessionKey,
+      source: binding.owner === "imported" ? "unknown" : "channel",
+    }, importOptions);
+    return {
+      hasMore: false,
+      messages: backfill.messages.map((message) => ({
+        event: createRemoteMessage({
+          convert: () => ({
+            parts: [{ content: message.content, id: message.id, type: "m.text" }],
+          }),
+          data: message,
+          id: message.id,
+          portalKey: params.portal.portalKey,
+          sender: {
+            isFromMe: message.sender !== "agent",
+            sender: message.sender === "agent" ? binding.agentId : `${this.#login.id}:human`,
+          },
+          timestamp: new Date(0),
+        }),
+      })),
+    };
   }
 }
 

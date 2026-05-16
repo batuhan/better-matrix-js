@@ -192,6 +192,50 @@ describe("OpenClawBridgeConnector", () => {
       decision: "deny",
     });
   });
+
+  it("fetches OpenClaw chat history for Pickle backfill", async () => {
+    const registry = new OpenClawBridgeRegistry("/tmp/openclaw-connector-test.json");
+    const runtime = runtimeWith({
+      responses: {
+        "chat.history": {
+          messages: [
+            { content: "hello", id: "m1", messageSeq: 1, role: "user" },
+            { content: "hi", id: "m2", messageSeq: 2, role: "assistant" },
+          ],
+        },
+      },
+    });
+    const api = new OpenClawNetworkAPI({
+      config: createDefaultConfig({ dataDir: "/tmp/openclaw" }),
+      login: login(),
+      registry,
+      runtime,
+      streams: { publish: vi.fn() },
+    });
+    const portal = {
+      id: "agent:codex",
+      metadata: {
+        openclaw: {
+          agentId: "codex",
+          ghostUserId: "@codex:example.com",
+          sessionKey: "agent:codex",
+        },
+      },
+      mxid: "!room:example.com",
+      portalKey: { id: "agent:codex", receiver: "login" },
+      receiver: "login",
+    };
+
+    const response = await api.fetchMessages({} as BridgeRequestContext, { limit: 2, portal });
+    expect(response.hasMore).toBe(false);
+    expect(response.messages).toHaveLength(2);
+    expect(response.messages.map((message) => message.event.getID())).toEqual(["m1", "m2"]);
+    expect(response.messages.map((message) => message.event.getSender().sender)).toEqual(["login:human", "codex"]);
+    expect(runtime.transport.request).toHaveBeenCalledWith("chat.history", {
+      limit: 2,
+      sessionKey: "agent:codex",
+    });
+  });
 });
 
 function login(): UserLogin {
