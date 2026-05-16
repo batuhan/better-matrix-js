@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   OPENCLAW_BRIDGE_COVERAGE,
+  OPENCLAW_GATEWAY_COMMON_METHODS,
   OPENCLAW_GATEWAY_EVENT_FAMILIES,
   OPENCLAW_GATEWAY_METHOD_FAMILIES,
 } from "./protocol-coverage";
@@ -43,6 +44,7 @@ describe("OpenClaw gateway protocol coverage manifest", () => {
 
   it("keeps broad feature access routed through generic gateway calls plus wrappers", () => {
     expect(OPENCLAW_BRIDGE_COVERAGE.methodAccess.genericGatewayCall).toBe("OpenClawGatewayRuntime.call");
+    expect(OPENCLAW_BRIDGE_COVERAGE.methodAccess.managementCli).toBe("pickle-openclaw rpc <method> [json-params]");
     expect(OPENCLAW_BRIDGE_COVERAGE.methodAccess.bridgeSpecificWrappers).toEqual(expect.arrayContaining([
       "agents.list",
       "sessions.send",
@@ -53,5 +55,17 @@ describe("OpenClaw gateway protocol coverage manifest", () => {
       "tools.invoke",
       "artifacts.download",
     ]));
+    expect(OPENCLAW_GATEWAY_COMMON_METHODS).toEqual(expect.arrayContaining([
+      "talk.session.create",
+      "config.schema.lookup",
+      "agents.files.set",
+      "sessions.messages.subscribe",
+      "device.token.rotate",
+      "node.pending.enqueue",
+      "plugin.approval.resolve",
+      "skills.install",
+      "tools.invoke",
+    ]));
+    expect(new Set(OPENCLAW_GATEWAY_COMMON_METHODS).size).toBe(OPENCLAW_GATEWAY_COMMON_METHODS.length);
   });
 });

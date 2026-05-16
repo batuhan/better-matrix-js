@@ -5,6 +5,8 @@ import type { BeeperEnvironment } from "@beeper/pickle/beeper/auth";
 import { accountFromOpenClawConfig, startOpenClawBeeperBridge, type CreateOpenClawBeeperBridgeOptions } from "./appservice";
 import { createOpenClawBeeperAppService, loginToBeeperForOpenClaw, setupOpenClawBeeperBridge } from "./beeper-setup";
 import { createDefaultConfig, defaultConfigPath, readConfig, secretToken, writeConfig } from "./config";
+import { createOpenClawRuntimeFromLogin, userLoginFromOpenClawConfig } from "./connector";
+import type { OpenClawGatewayRuntime } from "./openclaw-runtime";
 import { createAppserviceRegistration } from "./registration";
 import type { AppserviceRegistration, OpenClawBridgeConfig } from "./types";
 
@@ -14,6 +16,7 @@ export interface CliIO {
 }
 
 export interface CliDeps {
+  runtimeFactory?: (config: OpenClawBridgeConfig) => OpenClawGatewayRuntime;
   startBridge?: (options: CreateOpenClawBeeperBridgeOptions) => Promise<unknown>;
 }
 
@@ -46,6 +49,32 @@ export async function runCli(argv = process.argv.slice(2), io: CliIO = process, 
     if (command === "status") {
       const config = await loadConfig(parseOptions(args));
       io.stdout.write(`${JSON.stringify(redactConfig(config), null, 2)}\n`);
+      return 0;
+    }
+    if (command === "features") {
+      const options = parseOptions(args);
+      const config = await loadConfig(options);
+      const runtime = deps.runtimeFactory?.(config) ?? runtimeFromConfig(config);
+      try {
+        io.stdout.write(`${JSON.stringify(await runtime.featureSnapshot(), null, 2)}\n`);
+      } finally {
+        await runtime.close();
+      }
+      return 0;
+    }
+    if (command === "rpc") {
+      const { paramsText, positional } = splitOptionsAndPositionals(args);
+      const options = parseOptions(args);
+      const method = positional[0];
+      if (!method) throw new Error("rpc requires a Gateway method name");
+      const params = paramsText !== undefined ? parseJsonParam(paramsText) : parseJsonParam(positional[1] ?? "{}");
+      const config = await loadConfig(options);
+      const runtime = deps.runtimeFactory?.(config) ?? runtimeFromConfig(config);
+      try {
+        io.stdout.write(`${JSON.stringify(await runtime.call(method, params), null, 2)}\n`);
+      } finally {
+        await runtime.close();
+      }
       return 0;
     }
     if (command === "start") {
@@ -178,6 +207,8 @@ function helpText(): string {
     "  register   Write a Matrix appservice registration file",
     "  start      Start the OpenClaw Beeper bridge from config",
     "  status     Print the redacted effective config",
+    "  features   Probe the documented OpenClaw Gateway feature surface",
+    "  rpc        Call any OpenClaw Gateway RPC method",
     "  beeper-login     Log in to Beeper and write Matrix credentials",
     "  beeper-register  Register the OpenClaw appservice with Beeper",
     "  beeper-setup     Log in and register the OpenClaw appservice",
@@ -199,6 +230,7 @@ function helpText(): string {
     "  --create-account",
     "  --backfill",
     "  --backfill-limit <count>",
+    "  --params-json <json>",
     "  --env <production|staging|dev|local>",
     "",
   ].join("\n");
@@ -256,6 +288,35 @@ function parseOptions(args: string[]): Map<string, string | boolean> {
   return options;
 }
 
+function splitOptionsAndPositionals(args: string[]): { paramsText?: string; positional: string[] } {
+  const positional: string[] = [];
+  let paramsText: string | undefined;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (!arg) continue;
+    if (arg === "--params-json") {
+      paramsText = args[index + 1];
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--")) {
+      const next = args[index + 1];
+      if (next && !next.startsWith("--")) index += 1;
+      continue;
+    }
+    positional.push(arg);
+  }
+  return { ...(paramsText !== undefined ? { paramsText } : {}), positional };
+}
+
+function parseJsonParam(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    throw new Error(`Invalid JSON params: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 function stringOption(options: Map<string, string | boolean>, key: string): string | undefined {
   const value = options.get(key);
   return typeof value === "string" ? value : undefined;
@@ -292,6 +353,10 @@ function beeperBaseDomainOption(options: Map<string, string | boolean>): string 
   if (env === "local") return "beeper.localtest.me";
   if (env === "staging") return "beeper-staging.com";
   return undefined;
+}
+
+function runtimeFromConfig(config: OpenClawBridgeConfig): OpenClawGatewayRuntime {
+  return createOpenClawRuntimeFromLogin(userLoginFromOpenClawConfig(config), config);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

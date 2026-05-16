@@ -74,6 +74,17 @@ pickle-openclaw start \
   --backfill-limit 500
 ```
 
+Probe or call the Gateway surface directly:
+
+```sh
+pickle-openclaw features --config ~/.openclaw/pickle-bridge/config.json
+
+pickle-openclaw rpc \
+  --config ~/.openclaw/pickle-bridge/config.json \
+  config.schema.lookup \
+  --params-json '{"path":["agents"]}'
+```
+
 ## Programmatic Runtime
 
 ```ts
@@ -100,7 +111,7 @@ const bridge = await createOpenClawBeeperBridge({
 await bridge.start();
 ```
 
-The runtime exposes `OpenClawGatewayRuntime.call(method, params)` for the full Gateway RPC surface. Common bridge paths also have wrappers for agents, sessions, models, tools, tasks, artifacts, approvals, and feature snapshots.
+The runtime exposes `OpenClawGatewayRuntime.call(method, params)` and the CLI exposes `pickle-openclaw rpc <method> --params-json <json>` for the full Gateway RPC surface. Common bridge paths also have wrappers for agents, sessions, models, tools, tasks, artifacts, approvals, and feature snapshots.
 
 ## Protocol Coverage
 

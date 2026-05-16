@@ -98,7 +98,65 @@ describe("pickle-openclaw CLI", () => {
     }));
     expect(io.stdoutText).toContain("OpenClaw bridge started");
   });
+
+  it("calls arbitrary OpenClaw Gateway RPC methods from config", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pickle-openclaw-rpc-"));
+    const configPath = join(dir, "config.json");
+    await expect(runCli([
+      "init",
+      "--config",
+      configPath,
+      "--data-dir",
+      dir,
+      "--gateway-url",
+      "http://127.0.0.1:29390",
+    ], captureIO())).resolves.toBe(0);
+    const runtime = fakeRuntime({
+      "config.schema.lookup": { path: ["agents"], type: "object" },
+    });
+    const io = captureIO();
+
+    await expect(runCli([
+      "rpc",
+      "--config",
+      configPath,
+      "config.schema.lookup",
+      "--params-json",
+      "{\"path\":[\"agents\"]}",
+    ], io, { runtimeFactory: () => runtime })).resolves.toBe(0);
+
+    expect(runtime.call).toHaveBeenCalledWith("config.schema.lookup", { path: ["agents"] });
+    expect(runtime.close).toHaveBeenCalledOnce();
+    expect(JSON.parse(io.stdoutText)).toEqual({ path: ["agents"], type: "object" });
+  });
+
+  it("prints an OpenClaw Gateway feature snapshot", async () => {
+    const runtime = fakeRuntime({}, {
+      agents: { agents: [] },
+      status: { ok: true },
+    });
+    const io = captureIO();
+
+    await expect(runCli(["features", "--gateway-url", "http://127.0.0.1:29390"], io, {
+      runtimeFactory: () => runtime,
+    })).resolves.toBe(0);
+
+    expect(runtime.featureSnapshot).toHaveBeenCalledOnce();
+    expect(runtime.close).toHaveBeenCalledOnce();
+    expect(JSON.parse(io.stdoutText)).toEqual({
+      agents: { agents: [] },
+      status: { ok: true },
+    });
+  });
 });
+
+function fakeRuntime(responses: Record<string, unknown>, snapshot: unknown = {}) {
+  return {
+    call: vi.fn(async (method: string) => responses[method]),
+    close: vi.fn(async () => undefined),
+    featureSnapshot: vi.fn(async () => snapshot),
+  } as never;
+}
 
 function captureIO() {
   const io = {
