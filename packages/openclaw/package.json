@@ -27,6 +27,10 @@
       "types": "./dist/approval.d.mts",
       "import": "./dist/approval.mjs"
     },
+    "./backfill": {
+      "types": "./dist/backfill.d.mts",
+      "import": "./dist/backfill.mjs"
+    },
     "./bridge-agent": {
       "types": "./dist/bridge-agent.d.mts",
       "import": "./dist/bridge-agent.mjs"

@@ -53,6 +53,32 @@ export interface OpenClawRunRef {
   sessionKey: string;
 }
 
+export interface OpenClawListedSession {
+  agentId?: string;
+  chatType?: string;
+  derivedTitle?: string;
+  displayName?: string;
+  key: string;
+  label?: string;
+  lastAccountId?: string;
+  lastChannel?: string;
+  lastMessagePreview?: string;
+  lastProvider?: string;
+  lastTo?: string;
+  origin?: Record<string, unknown>;
+  provider?: string;
+  sessionId?: string;
+  updatedAt?: number | null;
+}
+
+export interface OpenClawChatHistoryMessage {
+  content?: unknown;
+  id?: string;
+  messageSeq?: number;
+  role?: string;
+  [key: string]: unknown;
+}
+
 export class OpenClawGatewayRuntime {
   readonly config: OpenClawBridgeConfig;
   readonly transport: OpenClawTransport;
@@ -87,6 +113,51 @@ export class OpenClawGatewayRuntime {
       label: stringValue(record.label) ?? options.label,
       raw,
       sessionId: stringValue(record.sessionId),
+    });
+  }
+
+  async listSessions(params: Record<string, unknown> = {}): Promise<OpenClawListedSession[]> {
+    const raw = await this.transport.request("sessions.list", params);
+    const sessions = arrayValue(recordValue(raw)?.sessions) ?? [];
+    return sessions.flatMap((session) => {
+      const record = recordValue(session);
+      const key = stringValue(record?.key);
+      if (!record || !key) return [];
+      return [stripUndefined({
+        agentId: stringValue(record.agentId),
+        chatType: stringValue(record.chatType),
+        derivedTitle: stringValue(record.derivedTitle),
+        displayName: stringValue(record.displayName),
+        key,
+        label: stringValue(record.label),
+        lastAccountId: stringValue(record.lastAccountId),
+        lastChannel: stringValue(record.lastChannel),
+        lastMessagePreview: stringValue(record.lastMessagePreview),
+        lastProvider: stringValue(record.lastProvider),
+        lastTo: stringValue(record.lastTo),
+        origin: recordValue(record.origin),
+        provider: stringValue(record.provider),
+        sessionId: stringValue(record.sessionId),
+        updatedAt: typeof record.updatedAt === "number" || record.updatedAt === null ? record.updatedAt : undefined,
+      })];
+    });
+  }
+
+  async loadHistory(sessionKey: string, limit?: number): Promise<OpenClawChatHistoryMessage[]> {
+    const raw = await this.transport.request("chat.history", {
+      sessionKey,
+      ...(limit !== undefined ? { limit } : {}),
+    });
+    const messages = arrayValue(recordValue(raw)?.messages) ?? [];
+    return messages.flatMap((message) => {
+      const record = recordValue(message);
+      if (!record) return [];
+      const normalized: OpenClawChatHistoryMessage = { ...record };
+      const role = stringValue(record.role);
+      const id = stringValue(record.id);
+      if (role) normalized.role = role;
+      if (id) normalized.id = id;
+      return [normalized];
     });
   }
 

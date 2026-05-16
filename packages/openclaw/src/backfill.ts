@@ -1,0 +1,131 @@
+import type {
+  OpenClawChatHistoryMessage,
+  OpenClawGatewayRuntime,
+  OpenClawListedSession,
+} from "./openclaw-runtime";
+import { agentGhostUserId, bindingIdForRoom } from "./rooms";
+import type { OpenClawBridgeConfig, OpenClawSessionBinding } from "./types";
+
+export interface OpenClawBackfillSession {
+  agentId: string;
+  label: string;
+  session: OpenClawListedSession;
+  sessionKey: string;
+  source: "terminal" | "mac-app" | "channel" | "unknown";
+}
+
+export interface OpenClawBackfillMessage {
+  content: Record<string, unknown>;
+  id: string;
+  role: "assistant" | "system" | "tool" | "user" | string;
+  sender: "agent" | "human" | "system";
+  seq: number;
+}
+
+export interface OpenClawBackfillImport {
+  binding: OpenClawSessionBinding;
+  messages: OpenClawBackfillMessage[];
+  source: OpenClawBackfillSession["source"];
+}
+
+export async function discoverOneToOneSessions(runtime: OpenClawGatewayRuntime): Promise<OpenClawBackfillSession[]> {
+  const sessions = await runtime.listSessions({ includeArchived: true });
+  return sessions.flatMap((session) => {
+    if (!isOneToOneSession(session)) return [];
+    const agentId = resolveAgentId(session);
+    return [{
+      agentId,
+      label: session.displayName ?? session.derivedTitle ?? session.label ?? session.key,
+      session,
+      sessionKey: session.key,
+      source: sessionSource(session),
+    }];
+  });
+}
+
+export async function buildBackfillImport(
+  runtime: OpenClawGatewayRuntime,
+  config: OpenClawBridgeConfig,
+  session: OpenClawBackfillSession,
+  options: { limit?: number; roomId: string }
+): Promise<OpenClawBackfillImport> {
+  const messages = (await runtime.loadHistory(session.sessionKey, options.limit)).map((message, index) =>
+    normalizeHistoryMessage(message, index)
+  );
+  return {
+    binding: {
+      agentId: session.agentId,
+      createdAt: Date.now(),
+      ghostUserId: agentGhostUserId(config, session.agentId),
+      id: bindingIdForRoom(options.roomId),
+      kind: "session",
+      label: session.label,
+      owner: "imported",
+      roomId: options.roomId,
+      sessionKey: session.sessionKey,
+      updatedAt: Date.now(),
+    },
+    messages,
+    source: session.source,
+  };
+}
+
+export function isOneToOneSession(session: OpenClawListedSession): boolean {
+  const chatType = session.chatType?.toLowerCase();
+  if (chatType && ["dm", "direct", "private", "one_to_one", "1:1"].includes(chatType)) return true;
+  if (session.lastTo && !session.lastTo.includes(",") && !session.lastTo.includes(" ")) return true;
+  const originType = stringValue(session.origin?.type) ?? stringValue(session.origin?.surface);
+  return originType === "terminal" || originType === "mac-app";
+}
+
+function normalizeHistoryMessage(message: OpenClawChatHistoryMessage, index: number): OpenClawBackfillMessage {
+  const role = typeof message.role === "string" ? message.role : "assistant";
+  const text = contentText(message.content);
+  return {
+    content: {
+      body: text || JSON.stringify(message.content ?? message),
+      msgtype: role === "assistant" ? "m.text" : "m.notice",
+      "com.beeper.openclaw.backfill": {
+        messageSeq: message.messageSeq ?? index,
+        role,
+      },
+    },
+    id: typeof message.id === "string" ? message.id : `history_${index}`,
+    role,
+    sender: role === "assistant" || role === "tool" ? "agent" : role === "system" ? "system" : "human",
+    seq: typeof message.messageSeq === "number" ? message.messageSeq : index,
+  };
+}
+
+function resolveAgentId(session: OpenClawListedSession): string {
+  if (session.agentId) return session.agentId;
+  const match = /^agent:([^:]+)/.exec(session.key);
+  return match?.[1] ?? "main";
+}
+
+function sessionSource(session: OpenClawListedSession): OpenClawBackfillSession["source"] {
+  const originSurface = stringValue(session.origin?.surface) ?? stringValue(session.origin?.type);
+  if (originSurface === "terminal" || session.provider === "terminal") return "terminal";
+  if (originSurface === "mac-app" || originSurface === "desktop" || session.provider === "mac-app") return "mac-app";
+  if (session.lastChannel || session.lastProvider) return "channel";
+  return "unknown";
+}
+
+function contentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((part) => {
+    if (typeof part === "string") return part;
+    const record = recordValue(part);
+    return stringValue(record?.text) ?? stringValue(record?.content) ?? "";
+  }).join("");
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  return value as Record<string, unknown>;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}

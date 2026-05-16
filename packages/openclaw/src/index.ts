@@ -1,4 +1,5 @@
 export * from "./approval";
+export * from "./backfill";
 export * from "./bridge-agent";
 export * from "./cli";
 export * from "./config";
