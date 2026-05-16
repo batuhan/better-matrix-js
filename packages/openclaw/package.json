@@ -12,6 +12,9 @@
   "bugs": {
     "url": "https://github.com/beeper/pickle/issues"
   },
+  "bin": {
+    "pickle-openclaw": "./dist/cli.mjs"
+  },
   "main": "./dist/index.mjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
@@ -27,6 +30,10 @@
     "./bridge-agent": {
       "types": "./dist/bridge-agent.d.mts",
       "import": "./dist/bridge-agent.mjs"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.mts",
+      "import": "./dist/cli.mjs"
     },
     "./config": {
       "types": "./dist/config.d.mts",
