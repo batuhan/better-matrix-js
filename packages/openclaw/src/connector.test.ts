@@ -131,7 +131,8 @@ describe("OpenClawBridgeConnector", () => {
       events: [{ event: "run.completed", payload: { runId: "run_1", type: "run.completed" } }],
       responses: {
         "exec.approval.resolve": { ok: true },
-        "sessions.send": { runId: "run_1", sessionKey: "agent:codex" },
+        "sessions.create": { key: "agent:codex:session_1" },
+        "sessions.send": { runId: "run_1", sessionKey: "agent:codex:session_1" },
       },
     });
     const api = new OpenClawNetworkAPI({
@@ -163,7 +164,7 @@ describe("OpenClawBridgeConnector", () => {
     } as MatrixMessage)).resolves.toEqual({ pending: false });
     expect(runtime.transport.request).toHaveBeenCalledWith("sessions.send", {
       idempotencyKey: "$message",
-      key: "agent:codex",
+      key: "agent:codex:session_1",
       message: "hello",
     }, { expectFinal: true });
 

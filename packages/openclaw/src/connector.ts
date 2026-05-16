@@ -29,7 +29,7 @@ import {
 } from "@beeper/pickle-bridge";
 import { buildBackfillImport } from "./backfill";
 import { parseApprovalResponseContent } from "./approval";
-import { OpenClawMatrixBridgeAgent, type OpenClawBridgeStreamPublisher } from "./bridge-agent";
+import { agentPortalSessionKey, OpenClawMatrixBridgeAgent, type OpenClawBridgeStreamPublisher } from "./bridge-agent";
 import { createDefaultConfig } from "./config";
 import { createOpenClawHttpTransport, createOpenClawWebSocketTransport, OpenClawGatewayRuntime, type OpenClawTransport } from "./openclaw-runtime";
 import { OpenClawBridgeRegistry } from "./registry";
@@ -333,7 +333,7 @@ function portalForAgent(contact: OpenClawAgentContact, receiver: string): Portal
       openclaw: {
         agentId: contact.agentId,
         ghostUserId: contact.ghostUserId,
-        sessionKey: id,
+        sessionKey: agentPortalSessionKey(contact.agentId),
       },
     },
     portalKey: { id, receiver },

@@ -50,18 +50,20 @@ export class OpenClawMatrixBridgeAgent {
       await this.registry.save();
       return;
     }
+    const sessionKey = await this.ensureSession(binding);
     const run = await this.runtime.sendMessage({
       idempotencyKey: turn.eventId,
       message: turn.text,
-      sessionKey: binding.sessionKey,
+      sessionKey,
     });
     this.registry.updateBinding(binding.id, (current) => ({
       ...current,
       lastMatrixEventId: turn.eventId,
       lastRunId: run.runId,
+      sessionKey: run.sessionKey,
       updatedAt: Date.now(),
     }));
-    await this.streamRun(binding, run.runId);
+    await this.streamRun({ ...binding, sessionKey: run.sessionKey }, run.runId);
     await this.registry.save();
   }
 
@@ -80,6 +82,25 @@ export class OpenClawMatrixBridgeAgent {
       if (chunks.length > 0) await this.streams.publish(binding, chunks);
     }
   }
+
+  async ensureSession(binding: OpenClawSessionBinding): Promise<string> {
+    if (binding.sessionKey !== agentPortalSessionKey(binding.agentId)) return binding.sessionKey;
+    const createOptions: { agentId: string; label?: string } = {
+      agentId: binding.agentId,
+    };
+    if (binding.label !== undefined) createOptions.label = binding.label;
+    const session = await this.runtime.createSession(createOptions);
+    this.registry.updateBinding(binding.id, (current) => ({
+      ...current,
+      sessionKey: session.key,
+      updatedAt: Date.now(),
+    }));
+    return session.key;
+  }
+}
+
+export function agentPortalSessionKey(agentId: string): string {
+  return `agent:${agentId}`;
 }
 
 function openClawEventFromGateway(event: OpenClawGatewayEvent): unknown {

@@ -62,6 +62,41 @@ describe("OpenClawMatrixBridgeAgent", () => {
     ]);
   });
 
+  it("creates an OpenClaw session before sending the first message in an agent contact DM", async () => {
+    const registry = await tempRegistry();
+    registry.upsertBinding({
+      ...testBinding(),
+      sessionKey: "agent:codex",
+    });
+    const runtime = runtimeWith({
+      events: [
+        { event: "run.completed", payload: { runId: "run_1", type: "run.completed" } },
+      ],
+      responses: {
+        "sessions.create": { key: "agent:codex:session_1", sessionId: "session_1" },
+        "sessions.send": { runId: "run_1", sessionKey: "agent:codex:session_1" },
+      },
+    });
+    const agent = new OpenClawMatrixBridgeAgent({ registry, runtime, streams: { publish: vi.fn() } });
+
+    await agent.handleMatrixText({
+      eventId: "$event",
+      roomId: "!room:example.com",
+      sender: "@alice:example.com",
+      text: "hello",
+    });
+
+    expect(runtime.transport.request).toHaveBeenCalledWith("sessions.create", {
+      agentId: "codex",
+    });
+    expect(runtime.transport.request).toHaveBeenCalledWith("sessions.send", {
+      idempotencyKey: "$event",
+      key: "agent:codex:session_1",
+      message: "hello",
+    }, { expectFinal: true });
+    expect(registry.getBindingByRoom("!room:example.com")?.sessionKey).toBe("agent:codex:session_1");
+  });
+
   it("preserves gateway event names when streaming protocol-v4 payload frames", async () => {
     const registry = await tempRegistry();
     const binding = testBinding();
